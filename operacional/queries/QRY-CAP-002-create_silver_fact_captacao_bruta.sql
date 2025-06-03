@@ -4,7 +4,10 @@ CREATE TABLE [M7Medallion].[silver].[silver_fact_captacao_bruta]
     conta_xp_cliente INT NOT NULL,
     cod_assessor VARCHAR(50) NOT NULL,
     origem_captacao VARCHAR(100) NOT NULL,
-    valor_captacao DECIMAL(18,2) NOT NULL,
+    captacao_bruta_xp DECIMAL(18,2) NOT NULL,
+    tipo_transferencia VARCHAR(100) NOT NULL,
+    captacao_bruta_transferencia DECIMAL(18,2) NOT NULL,
+    captacao_bruta_total DECIMAL(18,2) NOT NULL,
 );
 
 EXEC sys.sp_addextendedproperty 
@@ -62,14 +65,45 @@ GO
 
 EXEC sys.sp_addextendedproperty 
 @name=N'MS_Description', 
-@value=N'valor da captação bruta' , 
+@value=N'valor da captação parcial ótica xp', 
 @level0type=N'SCHEMA',
 @level0name=N'silver', 
 @level1type=N'TABLE',
 @level1name=N'silver_fact_captacao_bruta', 
 @level2type=N'COLUMN',
-@level2name=N'valor_captacao';
+@level2name=N'captacao_bruta_xp';
 GO
 
+EXEC sys.sp_addextendedproperty 
+@name=N'MS_Description', 
+@value=N'tipo de transferência de entrada, se é nova conta ou transferencia de escritorio' , 
+@level0type=N'SCHEMA',
+@level0name=N'silver', 
+@level1type=N'TABLE',
+@level1name=N'silver_fact_captacao_bruta', 
+@level2type=N'COLUMN',
+@level2name=N'tipo_transferencia';
+GO
 
+EXEC sys.sp_addextendedproperty 
+@name=N'MS_Description', 
+@value=N'valor da transferência de entrada. quanto de patrimonio o cliente tinha quando foi transferido para a M7' , 
+@level0type=N'SCHEMA',
+@level0name=N'silver', 
+@level1type=N'TABLE',
+@level1name=N'silver_fact_captacao_bruta', 
+@level2type=N'COLUMN',
+@level2name=N'captacao_bruta_transferencia';
+GO
+
+EXEC sys.sp_addextendedproperty 
+@name=N'MS_Description', 
+@value=N'captacao bruta = valor da captação parcial + valor da transferência de entrada' , 
+@level0type=N'SCHEMA',
+@level0name=N'silver', 
+@level1type=N'TABLE',
+@level1name=N'silver_fact_captacao_bruta', 
+@level2type=N'COLUMN',
+@level2name=N'captacao_bruta_total';
+GO
 
