@@ -7,7 +7,6 @@ CREATE TABLE [M7Medallion].[silver].[silver_fact_captacao_bruta]
     valor_captacao DECIMAL(18,2) NOT NULL,
 );
 
--- adicionar comentarios
 EXEC sys.sp_addextendedproperty 
 @name=N'MS_Description', 
 @value=N'tabela silver que contém os dados de captação bruta por cliente com seu respectivo assessor aai. apenas os valores de captação bruta são considerados nessa tabela, os valores de resgate não são considerados. essa tabela é oriunda dos relatórios de operações no hub da xp' , 
