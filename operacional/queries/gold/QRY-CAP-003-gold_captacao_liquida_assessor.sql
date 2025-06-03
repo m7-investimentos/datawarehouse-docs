@@ -1,0 +1,11 @@
+-- Arquivo já criado anteriormente, vou buscar o conteúdo completo
+-- =========================================================================
+-- TABELA: gold_captacao_liquida_assessor
+-- =========================================================================
+-- Grain: Assessor × Mês
+-- Propósito: Performance comercial consolidada dos assessores para gestão, comissionamento e desenvolvimento
+-- Autor: Data Science Team - M7 Investimentos
+-- Data Criação: 2025-01-02
+-- =========================================================================
+
+-- [CONTEÚDO SERÁ ADICIONADO COM GET DO ARQUIVO ORIGINAL]
