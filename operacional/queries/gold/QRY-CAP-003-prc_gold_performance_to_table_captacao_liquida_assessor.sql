@@ -40,13 +40,17 @@ Volume processado: ~500-1000 registros por execução
 @debug           BIT         -- Modo debug: 1 = exibe mensagens, 0 = silencioso (default: 0)
 
 Exemplo de uso:
--- Carga incremental padrão
+-- Carga incremental padrão (processa todos os dados disponíveis)
 EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor];
 
--- Recarga de período específico
+-- Carga incremental com período específico
 EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor] 
     @data_inicio = '2024-01-01',
     @data_fim = '2024-12-31',
+    @debug = 1;
+
+-- Carga FULL (reprocessa todos os dados)
+EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor] 
     @modo_carga = 'FULL',
     @debug = 1;
 */
@@ -136,17 +140,10 @@ BEGIN
         END
         ELSE
         BEGIN
-            -- Em modo INCREMENTAL, processar últimos 3 meses por padrão
-            IF @data_inicio IS NULL AND @data_fim IS NULL
-            BEGIN
-                SET @data_fim = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
-                SET @data_inicio = DATEADD(MONTH, -3, @data_fim);
-            END
-            ELSE
-            BEGIN
-                SET @data_inicio = ISNULL(@data_inicio, '2020-01-01');
-                SET @data_fim = ISNULL(@data_fim, DATEADD(DAY, -1, CAST(GETDATE() AS DATE)));
-            END
+            -- Em modo INCREMENTAL, processar todos os dados disponíveis por padrão
+            -- Apenas aplicar filtro de data se explicitamente fornecido
+            SET @data_inicio = ISNULL(@data_inicio, '2020-01-01');
+            SET @data_fim = ISNULL(@data_fim, DATEADD(DAY, -1, CAST(GETDATE() AS DATE)));
             
             IF @debug = 1
                 PRINT 'Modo INCREMENTAL: Processando período de ' + CONVERT(VARCHAR, @data_inicio, 103) + 
@@ -363,6 +360,7 @@ ORDER BY c.ano, c.mes;
 Versão  | Data       | Autor              | Descrição
 --------|------------|--------------------|-----------------------------------------
 1.0.0   | 2025-01-06 | Bruno Chiaramonti  | Criação inicial da procedure
+1.1.0   | 2025-01-10 | Bruno Chiaramonti  | Removida limitação de 3 meses no modo INCREMENTAL
 */
 
 -- ==============================================================================
@@ -371,8 +369,9 @@ Versão  | Data       | Autor              | Descrição
 /*
 Notas importantes:
 - Procedure implementa MERGE para otimizar performance
-- Modo INCREMENTAL processa últimos 3 meses por padrão
-- Modo FULL recarrega todos os dados (usar com cautela)
+- Modo INCREMENTAL processa todos os dados disponíveis por padrão
+- Para limitar o período, especifique @data_inicio e @data_fim
+- Modo FULL recarrega todos os dados (mesma funcionalidade do INCREMENTAL sem parâmetros)
 - Transação garante consistência dos dados
 
 Agendamento recomendado:
