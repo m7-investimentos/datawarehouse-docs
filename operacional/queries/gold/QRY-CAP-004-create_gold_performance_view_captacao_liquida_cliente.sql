@@ -188,11 +188,11 @@ historico_cliente AS (
 
 -- -----------------------------------------------------------------------------
 -- CTE: metricas_captacao_cliente
--- Descrição: Agrega métricas de captação por cliente no último dia do mês
+-- Descrição: Agrega métricas de captação por cliente para todo o mês
 -- -----------------------------------------------------------------------------
 metricas_captacao_cliente AS (
     SELECT 
-        fcb.data_ref,
+        udm.ultimo_dia_disponivel AS data_ref,
         fcb.conta_xp_cliente,
         fcb.cod_assessor,
         COUNT(*) AS qtd_operacoes_aporte,
@@ -203,20 +203,21 @@ metricas_captacao_cliente AS (
     FROM 
         [silver].[fact_captacao_bruta] fcb
         INNER JOIN ultimo_dia_mes udm
-            ON fcb.data_ref = udm.ultimo_dia_disponivel
+            ON YEAR(fcb.data_ref) = udm.ano
+            AND MONTH(fcb.data_ref) = udm.mes
     GROUP BY 
-        fcb.data_ref,
+        udm.ultimo_dia_disponivel,
         fcb.conta_xp_cliente,
         fcb.cod_assessor
 ),
 
 -- -----------------------------------------------------------------------------
 -- CTE: metricas_resgate_cliente
--- Descrição: Agrega métricas de resgate por cliente no último dia do mês
+-- Descrição: Agrega métricas de resgate por cliente para todo o mês
 -- -----------------------------------------------------------------------------
 metricas_resgate_cliente AS (
     SELECT 
-        fr.data_ref,
+        udm.ultimo_dia_disponivel AS data_ref,
         fr.conta_xp_cliente,
         fr.cod_assessor,
         COUNT(*) AS qtd_operacoes_resgate,
@@ -227,9 +228,10 @@ metricas_resgate_cliente AS (
     FROM 
         [silver].[fact_resgates] fr
         INNER JOIN ultimo_dia_mes udm
-            ON fr.data_ref = udm.ultimo_dia_disponivel
+            ON YEAR(fr.data_ref) = udm.ano
+            AND MONTH(fr.data_ref) = udm.mes
     GROUP BY 
-        fr.data_ref,
+        udm.ultimo_dia_disponivel,
         fr.conta_xp_cliente,
         fr.cod_assessor
 ),
@@ -302,10 +304,10 @@ SELECT
     COALESCE(mrc.resgate_bruto_transferencia_total, 0) AS resgate_bruto_transferencia,
     COALESCE(mrc.resgate_bruto_total, 0) AS resgate_bruto_total,
     
-    -- Métricas de Captação Líquida (Captação - Resgate)
-    COALESCE(mcc.captacao_bruta_xp_total, 0) - COALESCE(mrc.resgate_bruto_xp_total, 0) AS captacao_liquida_xp,
-    COALESCE(mcc.captacao_bruta_transferencia_total, 0) - COALESCE(mrc.resgate_bruto_transferencia_total, 0) AS captacao_liquida_transferencia,
-    COALESCE(mcc.captacao_bruta_total, 0) - COALESCE(mrc.resgate_bruto_total, 0) AS captacao_liquida_total,
+    -- Métricas de Captação Líquida (Captação + Resgate, pois resgates já são negativos)
+    COALESCE(mcc.captacao_bruta_xp_total, 0) + COALESCE(mrc.resgate_bruto_xp_total, 0) AS captacao_liquida_xp,
+    COALESCE(mcc.captacao_bruta_transferencia_total, 0) + COALESCE(mrc.resgate_bruto_transferencia_total, 0) AS captacao_liquida_transferencia,
+    COALESCE(mcc.captacao_bruta_total, 0) + COALESCE(mrc.resgate_bruto_total, 0) AS captacao_liquida_total,
     
     -- Métricas de Operações
     COALESCE(mcc.qtd_operacoes_aporte, 0) AS qtd_operacoes_aporte,

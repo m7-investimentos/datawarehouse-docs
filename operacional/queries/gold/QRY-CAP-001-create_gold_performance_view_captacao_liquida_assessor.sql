@@ -147,7 +147,7 @@ ultimo_dia_mes AS (
 -- Descrição: Busca a estrutura vigente do assessor na data de referência
 -- -----------------------------------------------------------------------------
 estrutura_assessor AS (
-    SELECT 
+    SELECT DISTINCT
         p.cod_aai,
         p.crm_id,
         p.nome_pessoa,
@@ -156,31 +156,27 @@ estrutura_assessor AS (
             WHEN p.data_fim_vigencia IS NULL THEN 'Ativo'
             ELSE 'Inativo'
         END AS assessor_status,
-        fep.id_estrutura,
-        e.nome_estrutura,
-        e.estrutura_pai,
-        ep.nome_estrutura AS nome_estrutura_pai,
-        fep.data_entrada,
-        fep.data_saida
+        FIRST_VALUE(e.nome_estrutura) OVER (
+            PARTITION BY p.cod_aai 
+            ORDER BY fep.data_entrada DESC
+        ) AS nome_estrutura
     FROM 
         [silver].[dim_pessoas] p
         LEFT JOIN [silver].[fact_estrutura_pessoas] fep 
             ON p.crm_id = fep.crm_id
         LEFT JOIN [silver].[dim_estruturas] e 
             ON fep.id_estrutura = e.id_estrutura
-        LEFT JOIN [silver].[dim_estruturas] ep 
-            ON e.estrutura_pai = ep.id_estrutura
     WHERE 
         p.cod_aai IS NOT NULL
 ),
 
 -- -----------------------------------------------------------------------------
 -- CTE: metricas_captacao
--- Descrição: Agrega métricas de captação por assessor no último dia do mês
+-- Descrição: Agrega métricas de captação por assessor para todo o mês
 -- -----------------------------------------------------------------------------
 metricas_captacao AS (
     SELECT 
-        fcb.data_ref,
+        udm.ultimo_dia_disponivel AS data_ref,
         fcb.cod_assessor,
         COUNT(DISTINCT fcb.conta_xp_cliente) AS qtd_clientes_aportando,
         SUM(fcb.captacao_bruta_xp) AS captacao_bruta_xp_total,
@@ -190,19 +186,20 @@ metricas_captacao AS (
     FROM 
         [silver].[fact_captacao_bruta] fcb
         INNER JOIN ultimo_dia_mes udm
-            ON fcb.data_ref = udm.ultimo_dia_disponivel
+            ON YEAR(fcb.data_ref) = udm.ano
+            AND MONTH(fcb.data_ref) = udm.mes
     GROUP BY 
-        fcb.data_ref,
+        udm.ultimo_dia_disponivel,
         fcb.cod_assessor
 ),
 
 -- -----------------------------------------------------------------------------
 -- CTE: metricas_resgate
--- Descrição: Agrega métricas de resgate por assessor no último dia do mês
+-- Descrição: Agrega métricas de resgate por assessor para todo o mês
 -- -----------------------------------------------------------------------------
 metricas_resgate AS (
     SELECT 
-        fr.data_ref,
+        udm.ultimo_dia_disponivel AS data_ref,
         fr.cod_assessor,
         COUNT(DISTINCT fr.conta_xp_cliente) AS qtd_clientes_resgatando,
         SUM(fr.resgate_bruto_xp) AS resgate_bruto_xp_total,
@@ -212,9 +209,10 @@ metricas_resgate AS (
     FROM 
         [silver].[fact_resgates] fr
         INNER JOIN ultimo_dia_mes udm
-            ON fr.data_ref = udm.ultimo_dia_disponivel
+            ON YEAR(fr.data_ref) = udm.ano
+            AND MONTH(fr.data_ref) = udm.mes
     GROUP BY 
-        fr.data_ref,
+        udm.ultimo_dia_disponivel,
         fr.cod_assessor
 ),
 
@@ -230,13 +228,23 @@ analise_clientes AS (
         COUNT(DISTINCT r.conta_xp_cliente) AS clientes_resgate,
         COUNT(DISTINCT CASE WHEN c.conta_xp_cliente = r.conta_xp_cliente THEN c.conta_xp_cliente END) AS clientes_ambos
     FROM 
-        (SELECT DISTINCT data_ref, cod_assessor, conta_xp_cliente 
+        (SELECT DISTINCT 
+            udm.ultimo_dia_disponivel AS data_ref, 
+            fcb.cod_assessor, 
+            fcb.conta_xp_cliente 
          FROM [silver].[fact_captacao_bruta] fcb
-         INNER JOIN ultimo_dia_mes udm ON fcb.data_ref = udm.ultimo_dia_disponivel) c
+         INNER JOIN ultimo_dia_mes udm 
+            ON YEAR(fcb.data_ref) = udm.ano
+            AND MONTH(fcb.data_ref) = udm.mes) c
     FULL OUTER JOIN 
-        (SELECT DISTINCT data_ref, cod_assessor, conta_xp_cliente 
+        (SELECT DISTINCT 
+            udm.ultimo_dia_disponivel AS data_ref, 
+            fr.cod_assessor, 
+            fr.conta_xp_cliente 
          FROM [silver].[fact_resgates] fr
-         INNER JOIN ultimo_dia_mes udm ON fr.data_ref = udm.ultimo_dia_disponivel) r
+         INNER JOIN ultimo_dia_mes udm 
+            ON YEAR(fr.data_ref) = udm.ano
+            AND MONTH(fr.data_ref) = udm.mes) r
     ON c.data_ref = r.data_ref 
         AND c.cod_assessor = r.cod_assessor 
         AND c.conta_xp_cliente = r.conta_xp_cliente
@@ -304,7 +312,6 @@ FROM
         ON COALESCE(mc.data_ref, mr.data_ref) = cal.data_ref
     LEFT JOIN estrutura_assessor ea
         ON COALESCE(mc.cod_assessor, mr.cod_assessor) = ea.cod_aai
-        AND COALESCE(mc.data_ref, mr.data_ref) BETWEEN ea.data_entrada AND COALESCE(ea.data_saida, '9999-12-31')
 GO
 
 -- ==============================================================================
