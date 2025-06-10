@@ -276,10 +276,10 @@ SELECT
     COALESCE(mr.resgate_bruto_transferencia_total, 0) AS resgate_bruto_transferencia,
     COALESCE(mr.resgate_bruto_total, 0) AS resgate_bruto_total,
     
-    -- Métricas de Captação Líquida (Captação - Resgate)
-    COALESCE(mc.captacao_bruta_xp_total, 0) - COALESCE(mr.resgate_bruto_xp_total, 0) AS captacao_liquida_xp,
-    COALESCE(mc.captacao_bruta_transferencia_total, 0) - COALESCE(mr.resgate_bruto_transferencia_total, 0) AS captacao_liquida_transferencia,
-    COALESCE(mc.captacao_bruta_total, 0) - COALESCE(mr.resgate_bruto_total, 0) AS captacao_liquida_total,
+    -- Métricas de Captação Líquida (Captação + Resgate, pois resgates já são negativos)
+    COALESCE(mc.captacao_bruta_xp_total, 0) + COALESCE(mr.resgate_bruto_xp_total, 0) AS captacao_liquida_xp,
+    COALESCE(mc.captacao_bruta_transferencia_total, 0) + COALESCE(mr.resgate_bruto_transferencia_total, 0) AS captacao_liquida_transferencia,
+    COALESCE(mc.captacao_bruta_total, 0) + COALESCE(mr.resgate_bruto_total, 0) AS captacao_liquida_total,
     
     -- Métricas de Clientes e Tickets
     COALESCE(mc.qtd_clientes_aportando, 0) AS qtd_clientes_aportando,
