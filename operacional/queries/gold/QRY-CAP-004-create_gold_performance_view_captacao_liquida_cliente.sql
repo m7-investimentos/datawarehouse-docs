@@ -237,24 +237,30 @@ metricas_resgate_cliente AS (
 ),
 
 -- -----------------------------------------------------------------------------
--- CTE: estrutura_assessor
--- Descrição: Busca a estrutura vigente do assessor na data de referência
+-- CTE: estrutura_assessor_periodo
+-- Descrição: Busca a estrutura vigente do assessor em cada período
 -- -----------------------------------------------------------------------------
-estrutura_assessor AS (
-    SELECT 
+estrutura_assessor_periodo AS (
+    SELECT DISTINCT
         p.cod_aai,
         p.nome_pessoa AS nome_assessor,
         p.assessor_nivel,
         p.crm_id AS codigo_assessor_crm,
-        p.assessor_status,
-        fep.id_estrutura,
+        CASE 
+            WHEN p.data_fim_vigencia IS NULL THEN 'Ativo'
+            ELSE 'Inativo'
+        END AS assessor_status,
         e.nome_estrutura,
         fep.data_entrada,
-        fep.data_saida
+        COALESCE(fep.data_saida, '9999-12-31') AS data_saida,
+        udm.ultimo_dia_disponivel AS data_ref
     FROM 
         [silver].[dim_pessoas] p
+        CROSS JOIN ultimo_dia_mes udm
         LEFT JOIN [silver].[fact_estrutura_pessoas] fep 
             ON p.crm_id = fep.crm_id
+            AND udm.ultimo_dia_disponivel >= fep.data_entrada
+            AND udm.ultimo_dia_disponivel <= COALESCE(fep.data_saida, '9999-12-31')
         LEFT JOIN [silver].[dim_estruturas] e 
             ON fep.id_estrutura = e.id_estrutura
     WHERE 
@@ -281,9 +287,9 @@ SELECT
         ELSE 'Não definido'
     END AS tipo_cliente,
     dc.grupo_cliente,
-    dc.segmento_cliente,
-    dc.status_cliente,
-    dc.faixa_etaria,
+    NULL AS segmento_cliente,  -- Campo não disponível na dim_clientes
+    NULL AS status_cliente,     -- Campo não disponível na dim_clientes
+    NULL AS faixa_etaria,       -- Campo não disponível na dim_clientes
     dc.codigo_cliente_crm,
     
     -- Dimensão assessor
@@ -332,9 +338,9 @@ FROM
         ON COALESCE(mcc.conta_xp_cliente, mrc.conta_xp_cliente) = hc.conta_xp_cliente
     LEFT JOIN [silver].[dim_calendario] cal
         ON COALESCE(mcc.data_ref, mrc.data_ref) = cal.data_ref
-    LEFT JOIN estrutura_assessor ea
+    LEFT JOIN estrutura_assessor_periodo ea
         ON COALESCE(mcc.cod_assessor, mrc.cod_assessor) = ea.cod_aai
-        AND COALESCE(mcc.data_ref, mrc.data_ref) BETWEEN ea.data_entrada AND COALESCE(ea.data_saida, '9999-12-31')
+        AND COALESCE(mcc.data_ref, mrc.data_ref) = ea.data_ref
 GO
 
 -- ==============================================================================
@@ -374,29 +380,29 @@ WHERE captacao_liquida_total < 0
   AND mes_anterior_1 < 0 
   AND mes_anterior_2 < 0;
 
--- Query para análise de ticket médio por segmento
+-- Query para análise por tipo de cliente (PF/PJ)
 SELECT 
-    segmento_cliente,
+    tipo_cliente,
     COUNT(DISTINCT conta_xp_cliente) as qtd_clientes,
-    AVG(ticket_medio_aporte) as ticket_medio_aporte_segmento,
-    AVG(ticket_medio_resgate) as ticket_medio_resgate_segmento,
-    SUM(captacao_liquida_total) as captacao_liquida_segmento
+    AVG(ticket_medio_aporte) as ticket_medio_aporte_tipo,
+    AVG(ticket_medio_resgate) as ticket_medio_resgate_tipo,
+    SUM(captacao_liquida_total) as captacao_liquida_tipo
 FROM [gold_performance].[view_captacao_liquida_cliente]
 WHERE ano = 2024
-GROUP BY segmento_cliente
-ORDER BY captacao_liquida_segmento DESC;
+GROUP BY tipo_cliente
+ORDER BY captacao_liquida_tipo DESC;
 
--- Query para análise por faixa etária
+-- Query para análise por assessor
 SELECT 
-    faixa_etaria,
+    cod_assessor,
+    nome_assessor,
     COUNT(DISTINCT conta_xp_cliente) as qtd_clientes,
     AVG(captacao_liquida_total) as captacao_liquida_media,
     SUM(captacao_liquida_total) as captacao_liquida_total
 FROM [gold_performance].[view_captacao_liquida_cliente]
-WHERE ano = 2024 
-  AND status_cliente = 'Ativo'
-GROUP BY faixa_etaria
-ORDER BY qtd_clientes DESC;
+WHERE ano = 2024
+GROUP BY cod_assessor, nome_assessor
+ORDER BY captacao_liquida_total DESC;
 */
 
 -- ==============================================================================
