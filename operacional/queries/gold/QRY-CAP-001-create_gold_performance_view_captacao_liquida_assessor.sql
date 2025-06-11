@@ -143,10 +143,10 @@ ultimo_dia_mes AS (
 ),
 
 -- -----------------------------------------------------------------------------
--- CTE: estrutura_assessor
--- Descrição: Busca a estrutura vigente do assessor na data de referência
+-- CTE: estrutura_assessor_periodo
+-- Descrição: Busca a estrutura vigente do assessor em cada período
 -- -----------------------------------------------------------------------------
-estrutura_assessor AS (
+estrutura_assessor_periodo AS (
     SELECT DISTINCT
         p.cod_aai,
         p.crm_id,
@@ -156,14 +156,17 @@ estrutura_assessor AS (
             WHEN p.data_fim_vigencia IS NULL THEN 'Ativo'
             ELSE 'Inativo'
         END AS assessor_status,
-        FIRST_VALUE(e.nome_estrutura) OVER (
-            PARTITION BY p.cod_aai 
-            ORDER BY fep.data_entrada DESC
-        ) AS nome_estrutura
+        e.nome_estrutura,
+        fep.data_entrada,
+        COALESCE(fep.data_saida, '9999-12-31') AS data_saida,
+        udm.ultimo_dia_disponivel AS data_ref
     FROM 
         [silver].[dim_pessoas] p
+        CROSS JOIN ultimo_dia_mes udm
         LEFT JOIN [silver].[fact_estrutura_pessoas] fep 
             ON p.crm_id = fep.crm_id
+            AND udm.ultimo_dia_disponivel >= fep.data_entrada
+            AND udm.ultimo_dia_disponivel <= COALESCE(fep.data_saida, '9999-12-31')
         LEFT JOIN [silver].[dim_estruturas] e 
             ON fep.id_estrutura = e.id_estrutura
     WHERE 
@@ -310,8 +313,9 @@ FROM
         AND COALESCE(mc.cod_assessor, mr.cod_assessor) = ac.cod_assessor
     LEFT JOIN [silver].[dim_calendario] cal
         ON COALESCE(mc.data_ref, mr.data_ref) = cal.data_ref
-    LEFT JOIN estrutura_assessor ea
+    LEFT JOIN estrutura_assessor_periodo ea
         ON COALESCE(mc.cod_assessor, mr.cod_assessor) = ea.cod_aai
+        AND COALESCE(mc.data_ref, mr.data_ref) = ea.data_ref
 GO
 
 -- ==============================================================================
