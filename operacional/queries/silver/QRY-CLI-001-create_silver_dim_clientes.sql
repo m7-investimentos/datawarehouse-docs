@@ -2,8 +2,8 @@
 -- QRY-CLI-001-create_silver_dim_clientes
 -- ==============================================================================
 -- Tipo: Create Table
--- Versão: 1.0.0
--- Última atualização: 2025-01-06
+-- Versão: 2.0.0
+-- Última atualização: 2025-01-13
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: bruno.chiaramonti@multisete.com
 -- Tags: [cliente, dimensão, cadastro, silver]
@@ -16,16 +16,15 @@
 -- 1. OBJETIVO
 -- ==============================================================================
 /*
-Descrição: Dimensão de clientes com dados cadastrais e patrimoniais. Contém TODOS 
-           os clientes históricos (cod_xp distintos do Positivador). Para cada 
-           cliente, usa os dados mais recentes do positivador e complementa com 
-           RPA quando disponível.
+Descrição: Dimensão de clientes com dados cadastrais básicos. Contém TODOS 
+           os clientes históricos (cod_xp distintos). Dados variáveis no tempo 
+           (perfil, patrimônio, status, etc) foram movidos para 
+           fact_cliente_perfil_historico.
 
 Casos de uso:
 - Master data de clientes para joins em análises
-- Segmentação de clientes por perfil e patrimônio
-- Análise de evolução da base de clientes
-- Identificação de clientes ativos/inativos/evadidos
+- Identificação única de clientes
+- Dados cadastrais básicos e estáticos
 
 Frequência de atualização: Diária
 Tempo médio de carga: ~2 minutos
@@ -43,12 +42,9 @@ Não aplicável - tabela de dimensão
 -- 3. ESTRUTURA DE SAÍDA
 -- ==============================================================================
 /*
-Status do cliente:
-- ATIVO: presente na última data geral com status=1
-- INATIVO: presente na última data geral com status=0  
-- EVADIU: não aparece na última data geral
-
-Última data geral de referência: 2025-05-28
+Importante: Esta tabela contém apenas dados cadastrais básicos e estáticos.
+Dados que variam no tempo (status, patrimônio, assessor, suitability, etc) 
+estão em fact_cliente_perfil_historico.
 */
 
 -- ==============================================================================
@@ -57,11 +53,10 @@ Status do cliente:
 /*
 Tabelas utilizadas:
 - [bronze].[xp_rpa_clientes]: Dados cadastrais do RPA
-- [bronze].[xp_positivador]: Dados patrimoniais e demográficos
+- [bronze].[xp_positivador]: Dados demográficos complementares
 
 Pré-requisitos:
 - Dados atualizados nas tabelas bronze
-- Índices em xp_positivador: (cod_xp, data_ref)
 */
 
 -- ==============================================================================
@@ -95,18 +90,8 @@ CREATE TABLE [silver].[dim_clientes](
     [sexo] [char](1) NULL,
     [profissao] [varchar](100) NULL,
     [data_cadastro] [date] NULL,
-    [suitability] [varchar](50) NULL,
-    [tipo_investidor] [varchar](100) NULL,
-    [segmento_cliente] [varchar](50) NULL,
     [grupo_cliente] [varchar](100) NULL,
-    [faixa_etaria] [varchar](50) NULL,
     [codigo_cliente_crm] [varchar](20) NULL,
-    [patrimonio_declarado] [decimal](18, 2) NULL,
-    [patrimonio_xp] [decimal](18, 2) NULL,
-    [cod_assessor] [varchar](20) NULL,
-    [fee_based] [varchar](25) NULL,
-    [status_cliente] [varchar](20) NOT NULL,
-    [data_ref_positivador] [date] NULL,
  CONSTRAINT [PK_dim_clientes] PRIMARY KEY CLUSTERED 
 (
     [cod_xp] ASC
@@ -138,60 +123,25 @@ EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Profissão dec
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Data de cadastro do cliente na XP. Origem: bronze.xp_positivador.data_cadastro da última data' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'data_cadastro'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Perfil de suitability do cliente: Conservador, Moderado, Agressivo, etc. Origem: bronze.xp_rpa_clientes.suitability' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'suitability'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Classificação CVM do investidor: Investidor Regular ou Investidor Qualificado. Origem: bronze.xp_rpa_clientes.tipo_investidor' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'tipo_investidor'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Segmento do cliente (Varejo, Private, Corporate, etc). Origem: bronze.xp_rpa_clientes.segmento' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'segmento_cliente'
-GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Grupo econômico do cliente quando aplicável. Origem: bronze.xp_rpa_clientes.grupo_economico' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'grupo_cliente'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Faixa etária calculada: Menor de 18, 18-25, 26-35, 36-45, 46-55, 56-65, Acima de 65, Pessoa Jurídica. Calculado baseado em data_nascimento' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'faixa_etaria'
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Código do cliente no CRM. Origem: bronze.xp_rpa_clientes.codigo_crm ou silver.dim_pessoas.crm_id' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'codigo_cliente_crm'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Patrimônio total declarado pelo cliente em outras instituições. Origem: bronze.xp_positivador.aplicacao_financeira_declarada da última data em que o cliente apareceu' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'patrimonio_declarado'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Patrimônio do cliente na XP. Origem: bronze.xp_positivador.net_em_M da última data em que o cliente apareceu' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'patrimonio_xp'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Código do assessor responsável pelo cliente. Origem: bronze.xp_positivador.cod_aai da última data em que o cliente apareceu' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'cod_assessor'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Indica se o cliente está em modelo fee-based: Sim ou Não. Origem: bronze.xp_rpa_clientes.fee_based' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'fee_based'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Status atual do cliente: ATIVO (presente na última data geral com status=1), INATIVO (presente na última data geral com status=0) ou EVADIU (não aparece na última data geral). Baseado na presença em 2025-05-28.' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'status_cliente'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Data de referência do positivador - última vez que o cliente apareceu. Para ATIVO/INATIVO será 2025-05-28. Para EVADIU será a última data em que apareceu antes de sair.' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes', @level2type=N'COLUMN',@level2name=N'data_ref_positivador'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Dimensão de clientes com dados cadastrais e patrimoniais. Contém TODOS os clientes históricos (cod_xp distintos do Positivador). Para cada cliente, usa os dados mais recentes do positivador e complementa com RPA quando disponível. Status: ATIVO (última data geral com status=1), INATIVO (última data geral com status=0) ou EVADIU (não aparece na última data geral). Última data geral: 2025-05-28.' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Dimensão de clientes com dados cadastrais básicos. Contém TODOS os clientes históricos (cod_xp distintos). Dados variáveis no tempo (perfil, patrimônio, etc) foram movidos para fact_cliente_perfil_historico.' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'dim_clientes'
 GO
 
 -- ==============================================================================
 -- 8. QUERIES AUXILIARES (PARA VALIDAÇÃO)
 -- ==============================================================================
 /*
--- Verificar distribuição por status
-SELECT 
-    status_cliente, 
-    COUNT(*) as qtd_clientes,
-    AVG(patrimonio_xp) as patrimonio_medio
-FROM [silver].[dim_clientes]
-GROUP BY status_cliente
-ORDER BY qtd_clientes DESC;
-
--- Verificar clientes sem nome
-SELECT COUNT(*) as clientes_sem_nome
-FROM [silver].[dim_clientes]
-WHERE nome_cliente IS NULL OR nome_cliente = CAST(cod_xp AS VARCHAR);
-
--- Análise de segmentação
+-- Verificar tipo de cliente (PF vs PJ)
 SELECT 
     CASE 
         WHEN cpf IS NOT NULL THEN 'PF'
         WHEN cnpj IS NOT NULL THEN 'PJ'
         ELSE 'Não identificado'
     END AS tipo_cliente,
-    COUNT(*) as quantidade,
-    AVG(patrimonio_xp) as patrimonio_medio
+    COUNT(*) as quantidade
 FROM [silver].[dim_clientes]
 GROUP BY 
     CASE 
@@ -200,7 +150,7 @@ GROUP BY
         ELSE 'Não identificado'
     END;
 
--- Verificação de grupos de clientes
+-- Verificar grupos de clientes
 SELECT 
     grupo_cliente,
     COUNT(*) as qtd_clientes
@@ -208,6 +158,14 @@ FROM [silver].[dim_clientes]
 WHERE grupo_cliente IS NOT NULL
 GROUP BY grupo_cliente
 ORDER BY qtd_clientes DESC;
+
+-- Clientes sem dados cadastrais
+SELECT 
+    COUNT(*) as total_clientes,
+    COUNT(nome_cliente) as com_nome,
+    COUNT(email_cliente) as com_email,
+    COUNT(telefone_cliente) as com_telefone
+FROM [silver].[dim_clientes];
 */
 
 -- ==============================================================================
@@ -217,6 +175,7 @@ ORDER BY qtd_clientes DESC;
 Versão  | Data       | Autor              | Descrição
 --------|------------|--------------------|-----------------------------------------
 1.0.0   | 2025-01-06 | Bruno Chiaramonti  | Criação inicial da tabela
+2.0.0   | 2025-01-13 | Bruno Chiaramonti  | Reestruturação - removidos campos variáveis (status, patrimônio, suitability, etc) que foram movidos para fact_cliente_perfil_historico
 */
 
 -- ==============================================================================
@@ -224,11 +183,17 @@ Versão  | Data       | Autor              | Descrição
 -- ==============================================================================
 /*
 Notas importantes:
-- A tabela contém apenas dados cadastrais básicos
+- Esta tabela contém apenas dados cadastrais básicos e estáticos
+- Todos os dados que variam no tempo estão em fact_cliente_perfil_historico:
+  - status_cliente (ATIVO/INATIVO/EVADIU)
+  - patrimonio_declarado e patrimonio_xp
+  - cod_assessor
+  - suitability e tipo_investidor
+  - segmento_cliente
+  - faixa_etaria
+  - fee_based
 - CPF e CNPJ são mutuamente exclusivos
 - grupo_cliente pode estar NULL para clientes sem grupo econômico
-- Dados de perfil, patrimônio e status estão em fact_cliente_perfil_historico
-- Esta tabela é estável e raramente muda após carga inicial
 
 Troubleshooting comum:
 1. Clientes duplicados: Verificar integridade do cod_xp nas fontes
