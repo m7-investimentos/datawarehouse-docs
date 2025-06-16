@@ -9,7 +9,7 @@
 -- Tags: [captação, cliente, mensal, análise]
 -- Status: desenvolvimento
 -- Banco de Dados: SQL Server
--- Schema: gold_performance
+-- Schema: gold
 -- ==============================================================================
 
 -- ==============================================================================
@@ -40,17 +40,17 @@ Esta é uma view sem parâmetros diretos. Filtros devem ser aplicados na consult
 
 Exemplos de uso:
 -- Histórico de um cliente específico
-SELECT * FROM [gold_performance].[view_captacao_liquida_cliente] 
+SELECT * FROM [gold].[view_captacao_liquida_cliente] 
 WHERE conta_xp_cliente = 12345 
 ORDER BY data_ref DESC;
 
 -- Clientes com maior captação líquida no mês
-SELECT TOP 100 * FROM [gold_performance].[view_captacao_liquida_cliente]
+SELECT TOP 100 * FROM [gold].[view_captacao_liquida_cliente]
 WHERE ano = 2024 AND mes = 12
 ORDER BY captacao_liquida_total DESC;
 
 -- Clientes em risco (resgates consecutivos)
-SELECT * FROM [gold_performance].[view_captacao_liquida_cliente]
+SELECT * FROM [gold].[view_captacao_liquida_cliente]
 WHERE captacao_liquida_total < 0
   AND ano = 2024
 ORDER BY captacao_liquida_total;
@@ -138,11 +138,11 @@ Pré-requisitos:
 -- ==============================================================================
 
 -- Remover view existente se necessário
-IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[gold_performance].[view_captacao_liquida_cliente]'))
-    DROP VIEW [gold_performance].[view_captacao_liquida_cliente]
+IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[gold].[view_captacao_liquida_cliente]'))
+    DROP VIEW [gold].[view_captacao_liquida_cliente]
 GO
 
-CREATE VIEW [gold_performance].[view_captacao_liquida_cliente] AS
+CREATE VIEW [gold].[view_captacao_liquida_cliente] AS
 WITH 
 -- -----------------------------------------------------------------------------
 -- CTE: ultimo_dia_mes
@@ -357,7 +357,7 @@ SELECT TOP 20
     nome_assessor,
     captacao_liquida_total,
     meses_como_cliente
-FROM [gold_performance].[view_captacao_liquida_cliente]
+FROM [gold].[view_captacao_liquida_cliente]
 WHERE ano = YEAR(GETDATE()) 
   AND mes = MONTH(GETDATE()) - 1
 ORDER BY captacao_liquida_total DESC;
@@ -370,7 +370,7 @@ WITH resgates_consecutivos AS (
         captacao_liquida_total,
         LAG(captacao_liquida_total, 1) OVER (PARTITION BY conta_xp_cliente ORDER BY data_ref) AS mes_anterior_1,
         LAG(captacao_liquida_total, 2) OVER (PARTITION BY conta_xp_cliente ORDER BY data_ref) AS mes_anterior_2
-    FROM [gold_performance].[view_captacao_liquida_cliente]
+    FROM [gold].[view_captacao_liquida_cliente]
 )
 SELECT DISTINCT
     conta_xp_cliente,
@@ -387,7 +387,7 @@ SELECT
     AVG(ticket_medio_aporte) as ticket_medio_aporte_tipo,
     AVG(ticket_medio_resgate) as ticket_medio_resgate_tipo,
     SUM(captacao_liquida_total) as captacao_liquida_tipo
-FROM [gold_performance].[view_captacao_liquida_cliente]
+FROM [gold].[view_captacao_liquida_cliente]
 WHERE ano = 2024
 GROUP BY tipo_cliente
 ORDER BY captacao_liquida_tipo DESC;
@@ -399,7 +399,7 @@ SELECT
     COUNT(DISTINCT conta_xp_cliente) as qtd_clientes,
     AVG(captacao_liquida_total) as captacao_liquida_media,
     SUM(captacao_liquida_total) as captacao_liquida_total
-FROM [gold_performance].[view_captacao_liquida_cliente]
+FROM [gold].[view_captacao_liquida_cliente]
 WHERE ano = 2024
 GROUP BY cod_assessor, nome_assessor
 ORDER BY captacao_liquida_total DESC;
@@ -412,6 +412,7 @@ ORDER BY captacao_liquida_total DESC;
 Versão  | Data       | Autor              | Descrição
 --------|------------|--------------------|-----------------------------------------
 1.0.0   | 2025-01-06 | Bruno Chiaramonti  | Criação inicial da view
+1.1.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold
 */
 
 -- ==============================================================================

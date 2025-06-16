@@ -41,16 +41,16 @@ Volume processado: ~500-1000 registros por execução
 
 Exemplo de uso:
 -- Carga incremental padrão (processa todos os dados disponíveis)
-EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor];
+EXEC [dbo].[prc_gold_to_table_captacao_liquida_assessor];
 
 -- Carga incremental com período específico
-EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor] 
+EXEC [dbo].[prc_gold_to_table_captacao_liquida_assessor] 
     @data_inicio = '2024-01-01',
     @data_fim = '2024-12-31',
     @debug = 1;
 
 -- Carga FULL (reprocessa todos os dados)
-EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor] 
+EXEC [dbo].[prc_gold_to_table_captacao_liquida_assessor] 
     @modo_carga = 'FULL',
     @debug = 1;
 */
@@ -74,10 +74,10 @@ Mensagens (quando @debug = 1):
 -- ==============================================================================
 /*
 Views utilizadas:
-- [gold_performance].[view_captacao_liquida_assessor]: Fonte dos dados
+- [gold].[view_captacao_liquida_assessor]: Fonte dos dados
 
 Tabelas atualizadas:
-- [gold_performance].[captacao_liquida_assessor]: Destino dos dados
+- [gold].[captacao_liquida_assessor]: Destino dos dados
 
 Pré-requisitos:
 - View deve existir e estar funcional
@@ -98,11 +98,11 @@ GO
 -- ==============================================================================
 
 -- Remover procedure existente se necessário
-IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[dbo].[prc_gold_performance_to_table_captacao_liquida_assessor]'))
-    DROP PROCEDURE [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor]
+IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[dbo].[prc_gold_to_table_captacao_liquida_assessor]'))
+    DROP PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_assessor]
 GO
 
-CREATE PROCEDURE [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor]
+CREATE PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_assessor]
     @data_inicio DATE = NULL,
     @data_fim DATE = NULL,
     @modo_carga VARCHAR(10) = 'INCREMENTAL',
@@ -159,7 +159,7 @@ BEGIN
             
         SELECT *
         INTO #temp_captacao_liquida
-        FROM [gold_performance].[view_captacao_liquida_assessor]
+        FROM [gold].[view_captacao_liquida_assessor]
         WHERE data_ref BETWEEN @data_inicio AND @data_fim;
         
         -- Criar índice na tabela temporária
@@ -169,7 +169,7 @@ BEGIN
             PRINT 'Dados carregados na tabela temporária: ' + CAST(@@ROWCOUNT AS VARCHAR) + ' registros';
         
         -- MERGE para atualizar tabela destino
-        MERGE [gold_performance].[captacao_liquida_assessor] AS destino
+        MERGE [gold].[captacao_liquida_assessor] AS destino
         USING #temp_captacao_liquida AS origem
         ON (destino.data_ref = origem.data_ref AND destino.cod_assessor = origem.cod_assessor)
         
@@ -275,7 +275,7 @@ BEGIN
         END
         
         -- Atualizar estatísticas da tabela
-        UPDATE STATISTICS [gold_performance].[captacao_liquida_assessor];
+        UPDATE STATISTICS [gold].[captacao_liquida_assessor];
         
         RETURN 0; -- Sucesso
         
@@ -309,7 +309,7 @@ GO
 -- ==============================================================================
 -- 7. PERMISSÕES
 -- ==============================================================================
--- GRANT EXECUTE ON [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor] TO [role_etl_gold]
+-- GRANT EXECUTE ON [dbo].[prc_gold_to_table_captacao_liquida_assessor] TO [role_etl_gold]
 -- GO
 
 -- ==============================================================================
@@ -322,7 +322,7 @@ SELECT TOP 1
     COUNT(*) as registros_carregados,
     MIN(data_ref) as data_inicio,
     MAX(data_ref) as data_fim
-FROM [gold_performance].[captacao_liquida_assessor]
+FROM [gold].[captacao_liquida_assessor]
 GROUP BY data_carga
 ORDER BY data_carga DESC;
 
@@ -331,13 +331,13 @@ SELECT
     'View' as origem,
     COUNT(*) as total_registros,
     SUM(captacao_liquida_total) as captacao_liquida_total
-FROM [gold_performance].[view_captacao_liquida_assessor]
+FROM [gold].[view_captacao_liquida_assessor]
 UNION ALL
 SELECT 
     'Tabela' as origem,
     COUNT(*) as total_registros,
     SUM(captacao_liquida_total) as captacao_liquida_total
-FROM [gold_performance].[captacao_liquida_assessor];
+FROM [gold].[captacao_liquida_assessor];
 
 -- Verificar períodos sem dados
 SELECT 
@@ -361,6 +361,7 @@ Versão  | Data       | Autor              | Descrição
 --------|------------|--------------------|-----------------------------------------
 1.0.0   | 2025-01-06 | Bruno Chiaramonti  | Criação inicial da procedure
 1.1.0   | 2025-01-10 | Bruno Chiaramonti  | Removida limitação de 3 meses no modo INCREMENTAL
+1.2.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold e rename da procedure
 */
 
 -- ==============================================================================

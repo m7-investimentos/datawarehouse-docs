@@ -9,7 +9,7 @@
 -- Tags: [captação, assessor, mensal, análise]
 -- Status: produção
 -- Banco de Dados: SQL Server
--- Schema: gold_performance
+-- Schema: gold
 -- ==============================================================================
 
 -- ==============================================================================
@@ -39,11 +39,11 @@ Esta é uma view sem parâmetros diretos. Filtros devem ser aplicados na consult
 
 Exemplos de uso:
 -- Captação de um assessor específico
-SELECT * FROM [gold_performance].[view_captacao_liquida_assessor] 
+SELECT * FROM [gold].[view_captacao_liquida_assessor] 
 WHERE cod_assessor = 'AAI123' AND ano = 2024;
 
 -- Top 10 assessores por captação líquida no mês
-SELECT TOP 10 * FROM [gold_performance].[view_captacao_liquida_assessor]
+SELECT TOP 10 * FROM [gold].[view_captacao_liquida_assessor]
 WHERE ano = 2024 AND mes = 12
 ORDER BY captacao_liquida_total DESC;
 */
@@ -120,11 +120,11 @@ Pré-requisitos:
 -- ==============================================================================
 
 -- Remover view existente se necessário
-IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[gold_performance].[view_captacao_liquida_assessor]'))
-    DROP VIEW [gold_performance].[view_captacao_liquida_assessor]
+IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[gold].[view_captacao_liquida_assessor]'))
+    DROP VIEW [gold].[view_captacao_liquida_assessor]
 GO
 
-CREATE VIEW [gold_performance].[view_captacao_liquida_assessor] AS
+CREATE VIEW [gold].[view_captacao_liquida_assessor] AS
 WITH 
 -- -----------------------------------------------------------------------------
 -- CTE: ultimo_dia_mes
@@ -332,7 +332,7 @@ SELECT TOP 10
     nome_assessor,
     nome_estrutura,
     captacao_liquida_total
-FROM [gold_performance].[view_captacao_liquida_assessor]
+FROM [gold].[view_captacao_liquida_assessor]
 WHERE ano = YEAR(GETDATE()) 
   AND mes = MONTH(GETDATE())
 ORDER BY captacao_liquida_total DESC;
@@ -342,7 +342,7 @@ SELECT
     cod_assessor,
     COUNT(*) as meses_negativos,
     SUM(captacao_liquida_total) as captacao_liquida_acumulada
-FROM [gold_performance].[view_captacao_liquida_assessor]
+FROM [gold].[view_captacao_liquida_assessor]
 WHERE captacao_liquida_total < 0
 GROUP BY cod_assessor
 HAVING COUNT(*) > 3
@@ -356,7 +356,7 @@ SELECT
     SUM(captacao_bruta_total) as captacao_bruta_mes,
     SUM(resgate_bruto_total) as resgate_bruto_mes,
     SUM(captacao_liquida_total) as captacao_liquida_mes
-FROM [gold_performance].[view_captacao_liquida_assessor]
+FROM [gold].[view_captacao_liquida_assessor]
 GROUP BY ano, mes
 ORDER BY ano DESC, mes DESC;
 */
@@ -371,6 +371,7 @@ Versão  | Data       | Autor              | Descrição
 1.1.0   | 2025-01-06 | Bruno Chiaramonti  | Adição de dimensões: calendário, pessoas e estruturas
 1.2.0   | 2025-01-06 | Bruno Chiaramonti  | Adição de métricas de clientes e análise comportamental
 1.3.0   | 2025-01-06 | Bruno Chiaramonti  | Ajuste para schema gold_performance
+1.4.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold
 */
 
 -- ==============================================================================

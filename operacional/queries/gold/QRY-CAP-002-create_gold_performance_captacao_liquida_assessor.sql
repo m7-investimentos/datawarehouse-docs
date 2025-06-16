@@ -9,7 +9,7 @@
 -- Tags: [captação, assessor, mensal, tabela, gold]
 -- Status: produção
 -- Banco de Dados: SQL Server
--- Schema: gold_performance
+-- Schema: gold
 -- ==============================================================================
 
 -- ==============================================================================
@@ -53,14 +53,14 @@ com adição de metadados de controle:
 -- ==============================================================================
 /*
 Views utilizadas:
-- [gold_performance].[view_captacao_liquida_assessor]: View fonte dos dados
+- [gold].[view_captacao_liquida_assessor]: View fonte dos dados
 
 Procedures relacionadas:
 - [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor]: Atualiza a tabela
 
 Pré-requisitos:
 - View deve estar criada e funcional
-- Permissões de CREATE TABLE no schema gold_performance
+- Permissões de CREATE TABLE no schema gold
 */
 
 -- ==============================================================================
@@ -74,11 +74,11 @@ Pré-requisitos:
 -- ==============================================================================
 
 -- Remover tabela existente se necessário
-IF EXISTS (SELECT * FROM sys.tables WHERE object_id = OBJECT_ID(N'[gold_performance].[captacao_liquida_assessor]'))
-    DROP TABLE [gold_performance].[captacao_liquida_assessor]
+IF EXISTS (SELECT * FROM sys.tables WHERE object_id = OBJECT_ID(N'[gold].[captacao_liquida_assessor]'))
+    DROP TABLE [gold].[captacao_liquida_assessor]
 GO
 
-CREATE TABLE [gold_performance].[captacao_liquida_assessor](
+CREATE TABLE [gold].[captacao_liquida_assessor](
     -- Dimensões temporais
     [data_ref] [date] NOT NULL,
     [ano] [int] NOT NULL,
@@ -141,7 +141,7 @@ GO
 
 -- Índice para consultas por período
 CREATE NONCLUSTERED INDEX [IX_captacao_liquida_assessor_periodo] 
-ON [gold_performance].[captacao_liquida_assessor]
+ON [gold].[captacao_liquida_assessor]
 (
     [ano] ASC,
     [mes] ASC
@@ -152,7 +152,7 @@ GO
 
 -- Índice para consultas por estrutura
 CREATE NONCLUSTERED INDEX [IX_captacao_liquida_assessor_estrutura] 
-ON [gold_performance].[captacao_liquida_assessor]
+ON [gold].[captacao_liquida_assessor]
 (
     [nome_estrutura] ASC,
     [ano] ASC,
@@ -164,7 +164,7 @@ GO
 
 -- Índice para ranking de performance
 CREATE NONCLUSTERED INDEX [IX_captacao_liquida_assessor_performance] 
-ON [gold_performance].[captacao_liquida_assessor]
+ON [gold].[captacao_liquida_assessor]
 (
     [captacao_liquida_total] DESC,
     [ano] ASC,
@@ -178,67 +178,67 @@ GO
 -- 8. PROPRIEDADES ESTENDIDAS
 -- ==============================================================================
 
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'data de referência (último dia do mês)' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'data_ref'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'data de referência (último dia do mês)' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'data_ref'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'ano de referência' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'ano'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'ano de referência' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'ano'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'mês de referência' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'mes'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'mês de referência' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'mes'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'nome do mês por extenso' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'nome_mes'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'nome do mês por extenso' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'nome_mes'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'trimestre do ano' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'trimestre'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'trimestre do ano' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'trimestre'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'código do assessor' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'cod_assessor'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'código do assessor' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'cod_assessor'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'nome completo do assessor' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'nome_assessor'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'nome completo do assessor' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'nome_assessor'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'nível do assessor' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'assessor_nivel'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'nível do assessor' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'assessor_nivel'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'código CRM do assessor' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'codigo_assessor_crm'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'código CRM do assessor' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'codigo_assessor_crm'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'status do assessor (ativo/inativo)' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'assessor_status'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'status do assessor (ativo/inativo)' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'assessor_status'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'nome da estrutura do assessor' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'nome_estrutura'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'nome da estrutura do assessor' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'nome_estrutura'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação bruta via XP' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_bruta_xp'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação bruta via XP' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_bruta_xp'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação bruta via transferência' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_bruta_transferencia'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação bruta via transferência' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_bruta_transferencia'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'total de captação bruta' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_bruta_total'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'total de captação bruta' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_bruta_total'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'resgates via XP' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'resgate_bruto_xp'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'resgates via XP' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'resgate_bruto_xp'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'resgates via transferência' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'resgate_bruto_transferencia'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'resgates via transferência' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'resgate_bruto_transferencia'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'total de resgates' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'resgate_bruto_total'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'total de resgates' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'resgate_bruto_total'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação líquida XP' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_liquida_xp'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação líquida XP' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_liquida_xp'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação líquida transferência' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_liquida_transferencia'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação líquida transferência' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_liquida_transferencia'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação líquida total' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_liquida_total'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'captação líquida total' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'captacao_liquida_total'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'quantidade de clientes únicos que fizeram aportes' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_aportando'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'quantidade de clientes únicos que fizeram aportes' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_aportando'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'quantidade de clientes únicos que fizeram resgates' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_resgatando'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'quantidade de clientes únicos que fizeram resgates' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_resgatando'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'valor médio por operação de aporte' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'ticket_medio_aporte'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'valor médio por operação de aporte' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'ticket_medio_aporte'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'valor médio por operação de resgate' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'ticket_medio_resgate'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'valor médio por operação de resgate' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'ticket_medio_resgate'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'clientes que só aportaram' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_apenas_aportando'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'clientes que só aportaram' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_apenas_aportando'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'clientes que só resgataram' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_apenas_resgatando'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'clientes que só resgataram' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_apenas_resgatando'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'clientes que fizeram ambos' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_aporte_e_resgate'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'clientes que fizeram ambos' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'qtd_clientes_aporte_e_resgate'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'data e hora da última carga' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'data_carga'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'data e hora da última carga' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'data_carga'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'hash do registro para controle de mudanças' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'hash_registro'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'hash do registro para controle de mudanças' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor', @level2type=N'COLUMN',@level2name=N'hash_registro'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'tabela que armazena dados consolidados de captação líquida por assessor com métricas de performance e análise comportamental de clientes' , @level0type=N'SCHEMA',@level0name=N'gold_performance', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'tabela que armazena dados consolidados de captação líquida por assessor com métricas de performance e análise comportamental de clientes' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'captacao_liquida_assessor'
 GO
--- GRANT SELECT ON [gold_performance].[captacao_liquida_assessor] TO [role_gold_read]
+-- GRANT SELECT ON [gold].[captacao_liquida_assessor] TO [role_gold_read]
 -- GO
 
 -- ==============================================================================
@@ -248,6 +248,7 @@ GO
 Versão  | Data       | Autor              | Descrição
 --------|------------|--------------------|-----------------------------------------
 1.0.0   | 2025-01-06 | Bruno Chiaramonti  | Criação inicial da tabela
+1.1.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold
 */
 
 -- ==============================================================================

@@ -9,7 +9,7 @@
 -- Tags: [patrimonio, cliente, mensal, análise, open-investment]
 -- Status: desenvolvimento
 -- Banco de Dados: SQL Server
--- Schema: gold_performance
+-- Schema: gold
 -- ==============================================================================
 
 -- ==============================================================================
@@ -42,18 +42,18 @@ Esta é uma view sem parâmetros diretos. Filtros devem ser aplicados na consult
 
 Exemplos de uso:
 -- Patrimônio atual de um cliente específico
-SELECT * FROM [gold_performance].[view_patrimonio_cliente] 
+SELECT * FROM [gold].[view_patrimonio_cliente] 
 WHERE conta_xp_cliente = 12345 
-  AND data_ref = (SELECT MAX(data_ref) FROM [gold_performance].[view_patrimonio_cliente])
+  AND data_ref = (SELECT MAX(data_ref) FROM [gold].[view_patrimonio_cliente])
 ORDER BY data_ref DESC;
 
 -- Clientes com maior patrimônio na XP
-SELECT TOP 100 * FROM [gold_performance].[view_patrimonio_cliente]
+SELECT TOP 100 * FROM [gold].[view_patrimonio_cliente]
 WHERE ano = 2024 AND mes = 12
 ORDER BY patrimonio_xp DESC;
 
 -- Clientes com baixo share of wallet (oportunidade)
-SELECT * FROM [gold_performance].[view_patrimonio_cliente]
+SELECT * FROM [gold].[view_patrimonio_cliente]
 WHERE share_of_wallet < 30
   AND patrimonio_declarado > 1000000
   AND ano = 2024
@@ -138,16 +138,16 @@ Pré-requisitos:
 -- ==============================================================================
 
 -- Criar schema se não existir
-IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = N'gold_performance')
-    EXEC('CREATE SCHEMA [gold_performance]')
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = N'gold')
+    EXEC('CREATE SCHEMA [gold]')
 GO
 
 -- Remover view existente se necessário
-IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[gold_performance].[view_patrimonio_cliente]'))
-    DROP VIEW [gold_performance].[view_patrimonio_cliente]
+IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[gold].[view_patrimonio_cliente]'))
+    DROP VIEW [gold].[view_patrimonio_cliente]
 GO
 
-CREATE VIEW [gold_performance].[view_patrimonio_cliente] AS
+CREATE VIEW [gold].[view_patrimonio_cliente] AS
 WITH 
 -- -----------------------------------------------------------------------------
 -- CTE: estrutura_assessor_periodo
@@ -362,8 +362,8 @@ SELECT TOP 20
     patrimonio_declarado,
     share_of_wallet,
     classificacao_share_wallet
-FROM [gold_performance].[view_patrimonio_cliente]
-WHERE data_ref = (SELECT MAX(data_ref) FROM [gold_performance].[view_patrimonio_cliente])
+FROM [gold].[view_patrimonio_cliente]
+WHERE data_ref = (SELECT MAX(data_ref) FROM [gold].[view_patrimonio_cliente])
 ORDER BY patrimonio_xp DESC;
 
 -- Query para identificar oportunidades de captação (baixo share of wallet)
@@ -376,7 +376,7 @@ SELECT TOP 50
     potencial_captacao,
     share_of_wallet,
     classificacao_share_wallet
-FROM [gold_performance].[view_patrimonio_cliente]
+FROM [gold].[view_patrimonio_cliente]
 WHERE ano = YEAR(GETDATE()) 
   AND mes = MONTH(GETDATE()) - 1
   AND share_of_wallet < 30
@@ -391,7 +391,7 @@ SELECT
     MAX(patrimonio_xp) AS patrimonio_atual,
     AVG(variacao_patrimonio_xp_mes) AS variacao_media_mensal,
     COUNT(DISTINCT data_ref) AS meses_com_dados
-FROM [gold_performance].[view_patrimonio_cliente]
+FROM [gold].[view_patrimonio_cliente]
 WHERE ano >= YEAR(GETDATE()) - 1
 GROUP BY conta_xp_cliente, nome_cliente
 HAVING COUNT(DISTINCT data_ref) >= 6
@@ -404,8 +404,8 @@ SELECT
     SUM(patrimonio_xp) AS patrimonio_total_xp,
     AVG(patrimonio_xp) AS patrimonio_medio_xp,
     AVG(share_of_wallet) AS share_wallet_medio
-FROM [gold_performance].[view_patrimonio_cliente]
-WHERE data_ref = (SELECT MAX(data_ref) FROM [gold_performance].[view_patrimonio_cliente])
+FROM [gold].[view_patrimonio_cliente]
+WHERE data_ref = (SELECT MAX(data_ref) FROM [gold].[view_patrimonio_cliente])
 GROUP BY faixa_patrimonio_xp
 ORDER BY 
     CASE faixa_patrimonio_xp
@@ -431,6 +431,7 @@ Versão  | Data       | Autor              | Descrição
 1.0.1   | 2025-01-13 | Bruno Chiaramonti  | Ajuste para buscar cod_assessor da fact_cliente_perfil_historico ao invés de dim_clientes
 1.0.2   | 2025-01-13 | Bruno Chiaramonti  | Revisão das junções com tabelas silver conforme solicitado
 1.0.3   | 2025-01-13 | Bruno Chiaramonti  | Correção: status_cliente vem de fact_cliente_perfil_historico, não de dim_clientes
+1.1.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold
 
 */
 
