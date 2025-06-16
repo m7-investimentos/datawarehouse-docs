@@ -1,5 +1,5 @@
 -- ==============================================================================
--- QRY-CAP-002-create_gold_performance_captacao_liquida_assessor
+-- QRY-CAP-002-create_gold_captacao_liquida_assessor
 -- ==============================================================================
 -- Tipo: Create Table
 -- Versão: 1.0.0
@@ -42,7 +42,7 @@ Não aplicável - tabela de armazenamento
 -- 3. ESTRUTURA DE SAÍDA
 -- ==============================================================================
 /*
-Estrutura idêntica à view [gold_performance].[captacao_liquida_assessor]
+Estrutura idêntica à view [gold].[view_captacao_liquida_assessor]
 com adição de metadados de controle:
 - data_carga: Timestamp da última atualização
 - hash_registro: Hash para controle de mudanças (calculado pela procedure)
@@ -56,7 +56,7 @@ Views utilizadas:
 - [gold].[view_captacao_liquida_assessor]: View fonte dos dados
 
 Procedures relacionadas:
-- [dbo].[prc_gold_performance_to_table_captacao_liquida_assessor]: Atualiza a tabela
+- [dbo].[prc_gold_to_table_captacao_liquida_assessor]: Atualiza a tabela
 
 Pré-requisitos:
 - View deve estar criada e funcional
@@ -248,7 +248,7 @@ GO
 Versão  | Data       | Autor              | Descrição
 --------|------------|--------------------|-----------------------------------------
 1.0.0   | 2025-01-06 | Bruno Chiaramonti  | Criação inicial da tabela
-1.1.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold
+1.1.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold e remoção de 'performance' do nome
 */
 
 -- ==============================================================================

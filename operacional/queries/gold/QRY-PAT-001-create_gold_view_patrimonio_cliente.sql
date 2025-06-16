@@ -1,5 +1,5 @@
 -- ==============================================================================
--- QRY-PAT-001-create_gold_performance_view_patrimonio_cliente
+-- QRY-PAT-001-create_gold_view_patrimonio_cliente
 -- ==============================================================================
 -- Tipo: View
 -- Versão: 1.0.0

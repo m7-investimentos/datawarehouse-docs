@@ -1,5 +1,5 @@
 -- ==============================================================================
--- QRY-CAP-001-create_gold_performance_view_captacao_liquida_assessor
+-- QRY-CAP-001-create_gold_view_captacao_liquida_assessor
 -- ==============================================================================
 -- Tipo: View
 -- Versão: 1.0.0
@@ -370,8 +370,7 @@ Versão  | Data       | Autor              | Descrição
 1.0.0   | 2025-01-06 | Bruno Chiaramonti  | Criação inicial da view
 1.1.0   | 2025-01-06 | Bruno Chiaramonti  | Adição de dimensões: calendário, pessoas e estruturas
 1.2.0   | 2025-01-06 | Bruno Chiaramonti  | Adição de métricas de clientes e análise comportamental
-1.3.0   | 2025-01-06 | Bruno Chiaramonti  | Ajuste para schema gold_performance
-1.4.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold
+1.3.0   | 2025-01-16 | Bruno Chiaramonti  | Ajuste para schema gold e remoção de 'performance' do nome
 */
 
 -- ==============================================================================

@@ -1,5 +1,5 @@
 -- ==============================================================================
--- QRY-CAP-003-prc_gold_performance_to_table_captacao_liquida_assessor
+-- QRY-CAP-003-prc_gold_to_table_captacao_liquida_assessor
 -- ==============================================================================
 -- Tipo: Stored Procedure
 -- Versão: 1.0.0
@@ -345,7 +345,7 @@ SELECT
     c.mes,
     COUNT(DISTINCT t.cod_assessor) as qtd_assessores
 FROM [silver].[dim_calendario] c
-LEFT JOIN [gold_performance].[captacao_liquida_assessor] t
+LEFT JOIN [gold].[captacao_liquida_assessor] t
     ON c.ano = t.ano AND c.mes = t.mes
 WHERE c.data_ref >= '2024-01-01'
     AND c.dia = 1
@@ -361,7 +361,7 @@ Versão  | Data       | Autor              | Descrição
 --------|------------|--------------------|-----------------------------------------
 1.0.0   | 2025-01-06 | Bruno Chiaramonti  | Criação inicial da procedure
 1.1.0   | 2025-01-10 | Bruno Chiaramonti  | Removida limitação de 3 meses no modo INCREMENTAL
-1.2.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold e rename da procedure
+1.2.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold e remoção de 'performance' do nome
 */
 
 -- ==============================================================================

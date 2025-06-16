@@ -1,5 +1,5 @@
 -- ==============================================================================
--- QRY-CAP-006-prc_gold_performance_to_table_captacao_liquida_cliente
+-- QRY-CAP-006-prc_gold_to_table_captacao_liquida_cliente
 -- ==============================================================================
 -- Tipo: Stored Procedure
 -- Versão: 1.0.0
@@ -104,11 +104,11 @@ GO
 -- ==============================================================================
 
 -- Remover procedure existente se necessário
-IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[dbo].[prc_gold_performance_to_table_captacao_liquida_cliente]'))
-    DROP PROCEDURE [dbo].[prc_gold_performance_to_table_captacao_liquida_cliente]
+IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[dbo].[prc_gold_to_table_captacao_liquida_cliente]'))
+    DROP PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_cliente]
 GO
 
-CREATE PROCEDURE [dbo].[prc_gold_performance_to_table_captacao_liquida_cliente]
+CREATE PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_cliente]
     @data_inicio DATE = NULL,
     @data_fim DATE = NULL,
     @modo_carga VARCHAR(10) = 'INCREMENTAL',
@@ -445,7 +445,7 @@ GO
 -- ==============================================================================
 -- 7. PERMISSÕES
 -- ==============================================================================
--- GRANT EXECUTE ON [dbo].[prc_gold_performance_to_table_captacao_liquida_cliente] TO [role_etl_gold]
+-- GRANT EXECUTE ON [dbo].[prc_gold_to_table_captacao_liquida_cliente] TO [role_etl_gold]
 -- GO
 
 -- ==============================================================================

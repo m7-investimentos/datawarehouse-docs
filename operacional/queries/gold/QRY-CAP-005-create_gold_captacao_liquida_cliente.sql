@@ -1,5 +1,5 @@
 -- ==============================================================================
--- QRY-CAP-005-create_gold_performance_captacao_liquida_cliente
+-- QRY-CAP-005-create_gold_captacao_liquida_cliente
 -- ==============================================================================
 -- Tipo: Create Table
 -- Versão: 1.0.0
