@@ -2,8 +2,8 @@
 -- QRY-PAT-001-create_gold_view_patrimonio_cliente
 -- ==============================================================================
 -- Tipo: View
--- Versão: 1.0.0
--- Última atualização: 2025-01-13
+-- Versão: 1.2.0
+-- Última atualização: 2025-01-16
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: bruno.chiaramonti@multisete.com
 -- Tags: [patrimonio, cliente, mensal, análise, open-investment]
@@ -177,25 +177,62 @@ estrutura_assessor_periodo AS (
 ),
 
 -- -----------------------------------------------------------------------------
+-- CTE: ultimo_dia_mes
+-- Descrição: Identifica o último dado disponível de cada mês para cada cliente
+-- -----------------------------------------------------------------------------
+ultimo_dia_mes AS (
+    SELECT 
+        fp.conta_xp_cliente,
+        YEAR(fp.data_ref) AS ano,
+        MONTH(fp.data_ref) AS mes,
+        MAX(fp.data_ref) AS data_ref_final
+    FROM 
+        [silver].[fact_patrimonio] fp
+    WHERE 
+        fp.patrimonio_xp IS NOT NULL OR fp.patrimonio_declarado IS NOT NULL
+    GROUP BY 
+        fp.conta_xp_cliente,
+        YEAR(fp.data_ref),
+        MONTH(fp.data_ref)
+),
+
+-- -----------------------------------------------------------------------------
+-- CTE: patrimonio_mensal
+-- Descrição: Dados de patrimônio usando apenas o último registro de cada mês
+-- -----------------------------------------------------------------------------
+patrimonio_mensal AS (
+    SELECT 
+        fp.conta_xp_cliente,
+        fp.data_ref,
+        fp.patrimonio_xp,
+        fp.patrimonio_declarado,
+        fp.patrimonio_open_investment,
+        fp.share_of_wallet
+    FROM 
+        [silver].[fact_patrimonio] fp
+        INNER JOIN ultimo_dia_mes udm
+            ON fp.conta_xp_cliente = udm.conta_xp_cliente
+            AND fp.data_ref = udm.data_ref_final
+),
+
+-- -----------------------------------------------------------------------------
 -- CTE: historico_patrimonio
 -- Descrição: Calcula métricas históricas de patrimônio por cliente
 -- -----------------------------------------------------------------------------
 historico_patrimonio AS (
     SELECT 
-        fp.conta_xp_cliente,
-        fp.data_ref,
-        fp.patrimonio_xp,
-        -- Variações mensais
-        LAG(fp.patrimonio_xp, 1) OVER (PARTITION BY fp.conta_xp_cliente ORDER BY fp.data_ref) AS patrimonio_xp_mes_anterior,
-        LAG(fp.patrimonio_xp, 3) OVER (PARTITION BY fp.conta_xp_cliente ORDER BY fp.data_ref) AS patrimonio_xp_3m_anterior,
-        LAG(fp.patrimonio_xp, 12) OVER (PARTITION BY fp.conta_xp_cliente ORDER BY fp.data_ref) AS patrimonio_xp_12m_anterior,
+        pm.conta_xp_cliente,
+        pm.data_ref,
+        pm.patrimonio_xp,
+        -- Variações mensais (usando dados mensais)
+        LAG(pm.patrimonio_xp, 1) OVER (PARTITION BY pm.conta_xp_cliente ORDER BY pm.data_ref) AS patrimonio_xp_mes_anterior,
+        LAG(pm.patrimonio_xp, 3) OVER (PARTITION BY pm.conta_xp_cliente ORDER BY pm.data_ref) AS patrimonio_xp_3m_anterior,
+        LAG(pm.patrimonio_xp, 12) OVER (PARTITION BY pm.conta_xp_cliente ORDER BY pm.data_ref) AS patrimonio_xp_12m_anterior,
         -- Primeira e última data com patrimônio
-        MIN(fp.data_ref) OVER (PARTITION BY fp.conta_xp_cliente) AS primeira_data_patrimonio,
-        MAX(fp.data_ref) OVER (PARTITION BY fp.conta_xp_cliente) AS ultima_atualizacao_patrimonio
+        MIN(pm.data_ref) OVER (PARTITION BY pm.conta_xp_cliente) AS primeira_data_patrimonio,
+        MAX(pm.data_ref) OVER (PARTITION BY pm.conta_xp_cliente) AS ultima_atualizacao_patrimonio
     FROM 
-        [silver].[fact_patrimonio] fp
-    WHERE 
-        fp.patrimonio_xp IS NOT NULL OR fp.patrimonio_declarado IS NOT NULL
+        patrimonio_mensal pm
 ),
 
 -- -----------------------------------------------------------------------------
@@ -204,45 +241,45 @@ historico_patrimonio AS (
 -- -----------------------------------------------------------------------------
 classificacao_patrimonio AS (
     SELECT 
-        fp.conta_xp_cliente,
-        fp.data_ref,
+        pm.conta_xp_cliente,
+        pm.data_ref,
         -- Classificação por patrimônio na XP
         CASE 
-            WHEN fp.patrimonio_xp IS NULL OR fp.patrimonio_xp = 0 THEN 'Sem patrimônio'
-            WHEN fp.patrimonio_xp < 10000 THEN '< 10K'
-            WHEN fp.patrimonio_xp < 50000 THEN '10K-50K'
-            WHEN fp.patrimonio_xp < 100000 THEN '50K-100K'
-            WHEN fp.patrimonio_xp < 500000 THEN '100K-500K'
-            WHEN fp.patrimonio_xp < 1000000 THEN '500K-1M'
-            WHEN fp.patrimonio_xp < 5000000 THEN '1M-5M'
-            WHEN fp.patrimonio_xp < 10000000 THEN '5M-10M'
+            WHEN pm.patrimonio_xp IS NULL OR pm.patrimonio_xp = 0 THEN 'Sem patrimônio'
+            WHEN pm.patrimonio_xp < 10000 THEN '< 10K'
+            WHEN pm.patrimonio_xp < 50000 THEN '10K-50K'
+            WHEN pm.patrimonio_xp < 100000 THEN '50K-100K'
+            WHEN pm.patrimonio_xp < 500000 THEN '100K-500K'
+            WHEN pm.patrimonio_xp < 1000000 THEN '500K-1M'
+            WHEN pm.patrimonio_xp < 5000000 THEN '1M-5M'
+            WHEN pm.patrimonio_xp < 10000000 THEN '5M-10M'
             ELSE '> 10M'
         END AS faixa_patrimonio_xp,
         -- Classificação por patrimônio declarado
         CASE 
-            WHEN fp.patrimonio_declarado IS NULL OR fp.patrimonio_declarado = 0 THEN 'Não declarado'
-            WHEN fp.patrimonio_declarado < 50000 THEN '< 50K'
-            WHEN fp.patrimonio_declarado < 100000 THEN '50K-100K'
-            WHEN fp.patrimonio_declarado < 500000 THEN '100K-500K'
-            WHEN fp.patrimonio_declarado < 1000000 THEN '500K-1M'
-            WHEN fp.patrimonio_declarado < 5000000 THEN '1M-5M'
-            WHEN fp.patrimonio_declarado < 10000000 THEN '5M-10M'
-            WHEN fp.patrimonio_declarado < 50000000 THEN '10M-50M'
+            WHEN pm.patrimonio_declarado IS NULL OR pm.patrimonio_declarado = 0 THEN 'Não declarado'
+            WHEN pm.patrimonio_declarado < 50000 THEN '< 50K'
+            WHEN pm.patrimonio_declarado < 100000 THEN '50K-100K'
+            WHEN pm.patrimonio_declarado < 500000 THEN '100K-500K'
+            WHEN pm.patrimonio_declarado < 1000000 THEN '500K-1M'
+            WHEN pm.patrimonio_declarado < 5000000 THEN '1M-5M'
+            WHEN pm.patrimonio_declarado < 10000000 THEN '5M-10M'
+            WHEN pm.patrimonio_declarado < 50000000 THEN '10M-50M'
             ELSE '> 50M'
         END AS faixa_patrimonio_declarado,
         -- Classificação por share of wallet
         CASE 
-            WHEN fp.share_of_wallet IS NULL THEN 'Não calculado'
-            WHEN fp.share_of_wallet = 0 THEN 'Zero'
-            WHEN fp.share_of_wallet < 10 THEN 'Muito baixo (<10%)'
-            WHEN fp.share_of_wallet < 25 THEN 'Baixo (10-25%)'
-            WHEN fp.share_of_wallet < 50 THEN 'Médio (25-50%)'
-            WHEN fp.share_of_wallet < 75 THEN 'Alto (50-75%)'
-            WHEN fp.share_of_wallet < 90 THEN 'Muito alto (75-90%)'
+            WHEN pm.share_of_wallet IS NULL THEN 'Não calculado'
+            WHEN pm.share_of_wallet = 0 THEN 'Zero'
+            WHEN pm.share_of_wallet < 10 THEN 'Muito baixo (<10%)'
+            WHEN pm.share_of_wallet < 25 THEN 'Baixo (10-25%)'
+            WHEN pm.share_of_wallet < 50 THEN 'Médio (25-50%)'
+            WHEN pm.share_of_wallet < 75 THEN 'Alto (50-75%)'
+            WHEN pm.share_of_wallet < 90 THEN 'Muito alto (75-90%)'
             ELSE 'Exclusivo (>90%)'
         END AS classificacao_share_wallet
     FROM 
-        [silver].[fact_patrimonio] fp
+        patrimonio_mensal pm
 )
 
 -- ==============================================================================
@@ -250,14 +287,14 @@ classificacao_patrimonio AS (
 -- ==============================================================================
 SELECT 
     -- Dimensões temporais
-    fp.data_ref,
+    pm.data_ref,
     cal.ano,
     cal.mes,
     cal.nome_mes,
     cal.trimestre,
     
     -- Dimensão cliente
-    fp.conta_xp_cliente,
+    pm.conta_xp_cliente,
     COALESCE(dc.nome_cliente, 'Cliente não identificado') AS nome_cliente,
     CASE 
         WHEN dc.cpf IS NOT NULL THEN 'PF'
@@ -277,21 +314,21 @@ SELECT
     COALESCE(ea.nome_estrutura, 'Sem estrutura') AS nome_estrutura,
     
     -- Métricas de Patrimônio
-    COALESCE(fp.patrimonio_xp, 0) AS patrimonio_xp,
-    COALESCE(fp.patrimonio_declarado, 0) AS patrimonio_declarado,
-    COALESCE(fp.patrimonio_open_investment, 0) AS patrimonio_open_investment,
-    COALESCE(fp.share_of_wallet, 0) AS share_of_wallet,
+    COALESCE(pm.patrimonio_xp, 0) AS patrimonio_xp,
+    COALESCE(pm.patrimonio_declarado, 0) AS patrimonio_declarado,
+    COALESCE(pm.patrimonio_open_investment, 0) AS patrimonio_open_investment,
+    COALESCE(pm.share_of_wallet, 0) AS share_of_wallet,
     
     -- Métricas calculadas
     CASE 
-        WHEN fp.patrimonio_declarado > 0 THEN 
-            COALESCE(fp.patrimonio_declarado - fp.patrimonio_xp, 0)
+        WHEN pm.patrimonio_declarado > 0 THEN 
+            COALESCE(pm.patrimonio_declarado - pm.patrimonio_xp, 0)
         ELSE 0
     END AS patrimonio_fora_xp,
     
     CASE 
-        WHEN fp.patrimonio_declarado > fp.patrimonio_xp THEN 
-            fp.patrimonio_declarado - fp.patrimonio_xp
+        WHEN pm.patrimonio_declarado > pm.patrimonio_xp THEN 
+            pm.patrimonio_declarado - pm.patrimonio_xp
         ELSE 0
     END AS potencial_captacao,
     
@@ -303,47 +340,47 @@ SELECT
     -- Variações temporais
     CASE 
         WHEN hp.patrimonio_xp_mes_anterior > 0 THEN 
-            ROUND(100.0 * (fp.patrimonio_xp - hp.patrimonio_xp_mes_anterior) / hp.patrimonio_xp_mes_anterior, 2)
+            ROUND(100.0 * (pm.patrimonio_xp - hp.patrimonio_xp_mes_anterior) / hp.patrimonio_xp_mes_anterior, 2)
         ELSE NULL
     END AS variacao_patrimonio_xp_mes,
     
     CASE 
         WHEN hp.patrimonio_xp_3m_anterior > 0 THEN 
-            ROUND(100.0 * (fp.patrimonio_xp - hp.patrimonio_xp_3m_anterior) / hp.patrimonio_xp_3m_anterior, 2)
+            ROUND(100.0 * (pm.patrimonio_xp - hp.patrimonio_xp_3m_anterior) / hp.patrimonio_xp_3m_anterior, 2)
         ELSE NULL
     END AS variacao_patrimonio_xp_3m,
     
     CASE 
         WHEN hp.patrimonio_xp_12m_anterior > 0 THEN 
-            ROUND(100.0 * (fp.patrimonio_xp - hp.patrimonio_xp_12m_anterior) / hp.patrimonio_xp_12m_anterior, 2)
+            ROUND(100.0 * (pm.patrimonio_xp - hp.patrimonio_xp_12m_anterior) / hp.patrimonio_xp_12m_anterior, 2)
         ELSE NULL
     END AS variacao_patrimonio_xp_12m,
     
     -- Métricas de Relacionamento
-    DATEDIFF(MONTH, dc.data_cadastro, fp.data_ref) AS meses_como_cliente,
+    DATEDIFF(MONTH, dc.data_cadastro, pm.data_ref) AS meses_como_cliente,
     dc.data_cadastro,
     hp.primeira_data_patrimonio,
     hp.ultima_atualizacao_patrimonio
     
 FROM 
-    [silver].[fact_patrimonio] fp
+    patrimonio_mensal pm
     LEFT JOIN [silver].[dim_clientes] dc
-        ON fp.conta_xp_cliente = dc.cod_xp
+        ON pm.conta_xp_cliente = dc.cod_xp
     LEFT JOIN [silver].[fact_cliente_perfil_historico] fcph
-        ON fp.conta_xp_cliente = fcph.conta_xp_cliente
-        AND fp.data_ref = fcph.data_ref
+        ON pm.conta_xp_cliente = fcph.conta_xp_cliente
+        AND pm.data_ref = fcph.data_ref
     LEFT JOIN [silver].[dim_calendario] cal
-        ON fp.data_ref = cal.data_ref
+        ON pm.data_ref = cal.data_ref
     LEFT JOIN estrutura_assessor_periodo ea
         ON fcph.cod_assessor = ea.cod_aai
-        AND fp.data_ref >= ea.data_entrada
-        AND fp.data_ref <= ea.data_saida
+        AND pm.data_ref >= ea.data_entrada
+        AND pm.data_ref <= ea.data_saida
     LEFT JOIN historico_patrimonio hp
-        ON fp.conta_xp_cliente = hp.conta_xp_cliente
-        AND fp.data_ref = hp.data_ref
+        ON pm.conta_xp_cliente = hp.conta_xp_cliente
+        AND pm.data_ref = hp.data_ref
     LEFT JOIN classificacao_patrimonio cp
-        ON fp.conta_xp_cliente = cp.conta_xp_cliente
-        AND fp.data_ref = cp.data_ref
+        ON pm.conta_xp_cliente = cp.conta_xp_cliente
+        AND pm.data_ref = cp.data_ref
 GO
 
 -- ==============================================================================
@@ -432,6 +469,7 @@ Versão  | Data       | Autor              | Descrição
 1.0.2   | 2025-01-13 | Bruno Chiaramonti  | Revisão das junções com tabelas silver conforme solicitado
 1.0.3   | 2025-01-13 | Bruno Chiaramonti  | Correção: status_cliente vem de fact_cliente_perfil_historico, não de dim_clientes
 1.1.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold
+1.2.0   | 2025-01-16 | Bruno Chiaramonti  | Alteração na agregação: usa último dado disponível de cada mês ao invés de soma do período
 
 */
 
@@ -446,12 +484,15 @@ Notas importantes:
 - Variações temporais só são calculadas quando há dados históricos disponíveis
 - A view permite análise de oportunidades através do potencial de captação
 - O cod_assessor vem de fact_cliente_perfil_historico pois dim_clientes contém apenas dados cadastrais básicos
+- A agregação usa o ÚLTIMO dado disponível de cada mês, não a soma do período
+- CTEs ultimo_dia_mes e patrimonio_mensal garantem que apenas o snapshot final do mês seja considerado
 
 Troubleshooting comum:
 1. Share of wallet NULL: Ocorre quando patrimônio declarado é NULL ou zero
 2. Variações temporais NULL: Normal para clientes novos sem histórico
 3. Dados de Open Investment: Podem ter defasagem devido à natureza da integração
 4. Performance lenta: Verificar índices em fact_patrimonio e estatísticas atualizadas
+5. Múltiplos registros por mês: A view já trata isso pegando apenas o último dia com dados
 
 Contato para dúvidas: bruno.chiaramonti@multisete.com
 */
