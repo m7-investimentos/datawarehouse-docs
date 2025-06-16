@@ -71,7 +71,7 @@ Colunas retornadas:
 | trimestre                      | CHAR(2)        | Trimestre do ano                             | 'Q4'             |
 | conta_xp_cliente               | INT            | Código da conta do cliente                   | 12345            |
 | nome_cliente                   | VARCHAR(200)   | Nome do cliente                              | 'João Silva'     |
-| tipo_cliente                   | VARCHAR(10)    | Tipo de cliente (PF/PJ)                      | 'PF'             |
+| tipo_cliente                   | VARCHAR(12)    | Tipo de cliente (PF/PJ)                      | 'PF'             |
 | grupo_cliente                  | VARCHAR(50)    | Grupo do cliente                             | 'Grupo ABC'      |
 | segmento_cliente               | VARCHAR(50)    | Segmentação do cliente                       | 'Private'        |
 | status_cliente                 | VARCHAR(50)    | Status do cliente (ativo/inativo)            | 'Ativo'          |

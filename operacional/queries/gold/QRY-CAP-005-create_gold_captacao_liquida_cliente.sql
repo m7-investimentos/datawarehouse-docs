@@ -92,7 +92,7 @@ CREATE TABLE [gold].[captacao_liquida_cliente](
     -- Dimensão cliente
     [conta_xp_cliente] [int] NOT NULL,
     [nome_cliente] [varchar](200) NULL,
-    [tipo_cliente] [varchar](10) NULL,
+    [tipo_cliente] [varchar](12) NULL,
     [grupo_cliente] [varchar](100) NULL,
     [segmento_cliente] [varchar](50) NULL,
     [status_cliente] [varchar](50) NULL,
