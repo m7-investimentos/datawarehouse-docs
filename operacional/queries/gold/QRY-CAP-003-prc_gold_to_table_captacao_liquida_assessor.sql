@@ -41,16 +41,16 @@ Volume processado: ~500-1000 registros por execução
 
 Exemplo de uso:
 -- Carga incremental padrão (processa todos os dados disponíveis)
-EXEC [dbo].[prc_gold_to_table_captacao_liquida_assessor];
+EXEC [gold].[prc_gold_to_table_captacao_liquida_assessor];
 
 -- Carga incremental com período específico
-EXEC [dbo].[prc_gold_to_table_captacao_liquida_assessor] 
+EXEC [gold].[prc_gold_to_table_captacao_liquida_assessor] 
     @data_inicio = '2024-01-01',
     @data_fim = '2024-12-31',
     @debug = 1;
 
 -- Carga FULL (reprocessa todos os dados)
-EXEC [dbo].[prc_gold_to_table_captacao_liquida_assessor] 
+EXEC [gold].[prc_gold_to_table_captacao_liquida_assessor] 
     @modo_carga = 'FULL',
     @debug = 1;
 */
@@ -98,11 +98,11 @@ GO
 -- ==============================================================================
 
 -- Remover procedure existente se necessário
-IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[dbo].[prc_gold_to_table_captacao_liquida_assessor]'))
-    DROP PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_assessor]
+IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[gold].[prc_gold_to_table_captacao_liquida_assessor]'))
+    DROP PROCEDURE [gold].[prc_gold_to_table_captacao_liquida_assessor]
 GO
 
-CREATE PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_assessor]
+CREATE PROCEDURE [gold].[prc_gold_to_table_captacao_liquida_assessor]
     @data_inicio DATE = NULL,
     @data_fim DATE = NULL,
     @modo_carga VARCHAR(10) = 'INCREMENTAL',
@@ -309,7 +309,7 @@ GO
 -- ==============================================================================
 -- 7. PERMISSÕES
 -- ==============================================================================
--- GRANT EXECUTE ON [dbo].[prc_gold_to_table_captacao_liquida_assessor] TO [role_etl_gold]
+-- GRANT EXECUTE ON [gold].[prc_gold_to_table_captacao_liquida_assessor] TO [role_etl_gold]
 -- GO
 
 -- ==============================================================================

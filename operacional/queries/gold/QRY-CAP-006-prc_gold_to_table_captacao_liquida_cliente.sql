@@ -18,17 +18,15 @@
 /*
 Descrição: Procedure responsável por atualizar a tabela materializada de captação
            líquida por cliente a partir da view correspondente. Implementa lógica
-           de carga incremental baseada em períodos modificados e controle de
-           performance para grandes volumes.
+           de carga incremental baseada em períodos modificados.
 
 Casos de uso:
 - Execução diária via SQL Agent Job
 - Recarga manual após correções em dados fonte
 - Atualização após reprocessamento de períodos específicos
-- Carga em lotes para grandes volumes de clientes
 
 Frequência de execução: Diária (preferencialmente após 6h da manhã)
-Tempo médio de execução: 2-3 minutos
+Tempo médio de execução: 3-5 minutos
 Volume processado: ~50.000-100.000 registros por execução
 */
 
@@ -39,23 +37,21 @@ Volume processado: ~50.000-100.000 registros por execução
 @data_inicio     DATE        -- Data inicial para processamento (opcional)
 @data_fim        DATE        -- Data final para processamento (opcional)
 @modo_carga      VARCHAR(10) -- Modo de carga: 'INCREMENTAL' ou 'FULL' (default: INCREMENTAL)
-@batch_size      INT         -- Tamanho do lote para processamento (default: 10000)
 @debug           BIT         -- Modo debug: 1 = exibe mensagens, 0 = silencioso (default: 0)
 
 Exemplo de uso:
 -- Carga incremental padrão (processa todos os dados disponíveis)
-EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_cliente];
+EXEC [gold].[prc_gold_to_table_captacao_liquida_cliente];
 
 -- Carga incremental com período específico
-EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_cliente] 
+EXEC [gold].[prc_gold_to_table_captacao_liquida_cliente] 
     @data_inicio = '2024-01-01',
     @data_fim = '2024-12-31',
     @debug = 1;
 
 -- Carga FULL (reprocessa todos os dados)
-EXEC [dbo].[prc_gold_performance_to_table_captacao_liquida_cliente] 
+EXEC [gold].[prc_gold_to_table_captacao_liquida_cliente] 
     @modo_carga = 'FULL',
-    @batch_size = 50000,
     @debug = 1;
 */
 
@@ -104,15 +100,14 @@ GO
 -- ==============================================================================
 
 -- Remover procedure existente se necessário
-IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[dbo].[prc_gold_to_table_captacao_liquida_cliente]'))
-    DROP PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_cliente]
+IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[gold].[prc_gold_to_table_captacao_liquida_cliente]'))
+    DROP PROCEDURE [gold].[prc_gold_to_table_captacao_liquida_cliente]
 GO
 
-CREATE PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_cliente]
+CREATE PROCEDURE [gold].[prc_gold_to_table_captacao_liquida_cliente]
     @data_inicio DATE = NULL,
     @data_fim DATE = NULL,
     @modo_carga VARCHAR(10) = 'INCREMENTAL',
-    @batch_size INT = 10000,
     @debug BIT = 0
 AS
 BEGIN
@@ -120,12 +115,9 @@ BEGIN
     
     -- Variáveis de controle
     DECLARE @inicio_processo DATETIME = GETDATE();
-    DECLARE @inicio_lote DATETIME;
     DECLARE @registros_inseridos INT = 0;
     DECLARE @registros_atualizados INT = 0;
     DECLARE @registros_deletados INT = 0;
-    DECLARE @total_registros INT = 0;
-    DECLARE @lotes_processados INT = 0;
     DECLARE @erro_mensagem NVARCHAR(4000);
     DECLARE @erro_numero INT;
     
@@ -134,12 +126,6 @@ BEGIN
         IF @modo_carga NOT IN ('INCREMENTAL', 'FULL')
         BEGIN
             RAISERROR('Modo de carga inválido. Use INCREMENTAL ou FULL.', 16, 1);
-            RETURN 1;
-        END
-        
-        IF @batch_size < 1000 OR @batch_size > 100000
-        BEGIN
-            RAISERROR('Batch size deve estar entre 1000 e 100000.', 16, 1);
             RETURN 1;
         END
         
@@ -165,92 +151,28 @@ BEGIN
                       ' até ' + CONVERT(VARCHAR, @data_fim, 103);
         END
         
+        -- Iniciar transação
+        BEGIN TRANSACTION;
+        
         -- Criar tabela temporária com dados da view
         IF OBJECT_ID('tempdb..#temp_captacao_liquida_cliente') IS NOT NULL
             DROP TABLE #temp_captacao_liquida_cliente;
             
-        -- Criar estrutura da tabela temporária com índice
-        CREATE TABLE #temp_captacao_liquida_cliente (
-            data_ref DATE NOT NULL,
-            conta_xp_cliente INT NOT NULL,
-            ano INT,
-            mes INT,
-            nome_mes VARCHAR(20),
-            trimestre CHAR(2),
-            nome_cliente VARCHAR(200),
-            tipo_cliente VARCHAR(10),
-            grupo_cliente VARCHAR(100),
-            segmento_cliente VARCHAR(50),
-            status_cliente VARCHAR(50),
-            faixa_etaria VARCHAR(50),
-            codigo_cliente_crm VARCHAR(100),
-            cod_assessor VARCHAR(50),
-            nome_assessor VARCHAR(200),
-            assessor_nivel VARCHAR(50),
-            assessor_status VARCHAR(50),
-            codigo_assessor_crm VARCHAR(20),
-            nome_estrutura VARCHAR(100),
-            captacao_bruta_xp DECIMAL(18,2),
-            captacao_bruta_transferencia DECIMAL(18,2),
-            captacao_bruta_total DECIMAL(18,2),
-            resgate_bruto_xp DECIMAL(18,2),
-            resgate_bruto_transferencia DECIMAL(18,2),
-            resgate_bruto_total DECIMAL(18,2),
-            captacao_liquida_xp DECIMAL(18,2),
-            captacao_liquida_transferencia DECIMAL(18,2),
-            captacao_liquida_total DECIMAL(18,2),
-            qtd_operacoes_aporte INT,
-            qtd_operacoes_resgate INT,
-            ticket_medio_aporte DECIMAL(18,2),
-            ticket_medio_resgate DECIMAL(18,2),
-            meses_como_cliente INT,
-            primeira_captacao DATE,
-            ultima_captacao DATE,
-            ultimo_resgate DATE,
-            lote_processamento INT,
-            PRIMARY KEY CLUSTERED (data_ref, conta_xp_cliente)
-        );
-        
-        -- Carregar dados da view em lotes
-        IF @debug = 1
-            PRINT 'Iniciando carga de dados da view para tabela temporária...';
-            
-        SET @inicio_lote = GETDATE();
-        
-        -- Inserir dados com numeração de lotes para processamento controlado
-        INSERT INTO #temp_captacao_liquida_cliente
-        SELECT 
-            *,
-            (ROW_NUMBER() OVER (ORDER BY data_ref, conta_xp_cliente) - 1) / @batch_size + 1 AS lote_processamento
+        SELECT *
+        INTO #temp_captacao_liquida_cliente
         FROM [gold].[view_captacao_liquida_cliente]
         WHERE data_ref BETWEEN @data_inicio AND @data_fim;
         
-        SET @total_registros = @@ROWCOUNT;
+        -- Criar índice na tabela temporária
+        CREATE CLUSTERED INDEX IX_temp_captacao ON #temp_captacao_liquida_cliente (data_ref, conta_xp_cliente);
         
         IF @debug = 1
-        BEGIN
-            PRINT 'Dados carregados na tabela temporária: ' + CAST(@total_registros AS VARCHAR) + ' registros';
-            PRINT 'Tempo de carga: ' + CAST(DATEDIFF(SECOND, @inicio_lote, GETDATE()) AS VARCHAR) + ' segundos';
-            PRINT 'Total de lotes a processar: ' + CAST(CEILING(CAST(@total_registros AS FLOAT) / @batch_size) AS VARCHAR);
-        END
+            PRINT 'Dados carregados na tabela temporária: ' + CAST(@@ROWCOUNT AS VARCHAR) + ' registros';
         
-        -- Processar dados em lotes
-        DECLARE @lote_atual INT = 1;
-        DECLARE @max_lote INT = CEILING(CAST(@total_registros AS FLOAT) / @batch_size);
-        
-        WHILE @lote_atual <= @max_lote
-        BEGIN
-            BEGIN TRANSACTION;
-            
-            SET @inicio_lote = GETDATE();
-            
-            -- MERGE para atualizar tabela destino (por lote)
-            MERGE [gold].[captacao_liquida_cliente] AS destino
-            USING (
-                SELECT * FROM #temp_captacao_liquida_cliente
-                WHERE lote_processamento = @lote_atual
-            ) AS origem
-            ON (destino.data_ref = origem.data_ref AND destino.conta_xp_cliente = origem.conta_xp_cliente)
+        -- MERGE para atualizar tabela destino
+        MERGE [gold].[captacao_liquida_cliente] AS destino
+        USING #temp_captacao_liquida_cliente AS origem
+        ON (destino.data_ref = origem.data_ref AND destino.conta_xp_cliente = origem.conta_xp_cliente)
             
             -- Atualizar registros existentes que mudaram
             WHEN MATCHED AND (
@@ -347,66 +269,30 @@ BEGIN
                     CAST(ISNULL(origem.resgate_bruto_total, 0) AS VARCHAR(20)) + '|' +
                     CAST(ISNULL(origem.meses_como_cliente, 0) AS VARCHAR(10))
                 )
-            );
+            )
             
-            SET @registros_inseridos = @registros_inseridos + @@ROWCOUNT;
+            -- Deletar registros que não existem mais na origem (apenas no período processado)
+            WHEN NOT MATCHED BY SOURCE 
+                AND destino.data_ref BETWEEN @data_inicio AND @data_fim 
+            THEN DELETE;
             
-            -- Deletar registros órfãos (apenas para o período e clientes do lote atual)
-            IF @modo_carga = 'FULL'
-            BEGIN
-                DELETE destino
-                FROM [gold].[captacao_liquida_cliente] destino
-                WHERE destino.data_ref BETWEEN @data_inicio AND @data_fim
-                  AND destino.conta_xp_cliente IN (
-                      SELECT DISTINCT conta_xp_cliente 
-                      FROM #temp_captacao_liquida_cliente 
-                      WHERE lote_processamento = @lote_atual
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1 
-                      FROM #temp_captacao_liquida_cliente origem
-                      WHERE origem.data_ref = destino.data_ref
-                        AND origem.conta_xp_cliente = destino.conta_xp_cliente
-                        AND origem.lote_processamento = @lote_atual
-                  );
-                  
-                SET @registros_deletados = @registros_deletados + @@ROWCOUNT;
-            END
+            -- Capturar estatísticas
+            SET @registros_inseridos = @@ROWCOUNT;
             
+            -- Commit da transação
             COMMIT TRANSACTION;
-            
-            SET @lotes_processados = @lotes_processados + 1;
-            
-            IF @debug = 1
-            BEGIN
-                PRINT 'Lote ' + CAST(@lote_atual AS VARCHAR) + '/' + CAST(@max_lote AS VARCHAR) + 
-                      ' processado em ' + CAST(DATEDIFF(SECOND, @inicio_lote, GETDATE()) AS VARCHAR) + ' segundos';
-            END
-            
-            SET @lote_atual = @lote_atual + 1;
-            
-            -- Pequena pausa entre lotes para não sobrecarregar o sistema
-            IF @lote_atual <= @max_lote
-                WAITFOR DELAY '00:00:01';
-        END
         
         -- Log de execução (quando debug ativado)
         IF @debug = 1
         BEGIN
             PRINT '=== RESUMO DA EXECUÇÃO ===';
-            PRINT 'Total de registros processados: ' + CAST(@total_registros AS VARCHAR);
-            PRINT 'Registros inseridos/atualizados: ' + CAST(@registros_inseridos AS VARCHAR);
-            PRINT 'Registros deletados: ' + CAST(@registros_deletados AS VARCHAR);
-            PRINT 'Lotes processados: ' + CAST(@lotes_processados AS VARCHAR);
-            PRINT 'Tempo total de execução: ' + CAST(DATEDIFF(SECOND, @inicio_processo, GETDATE()) AS VARCHAR) + ' segundos';
+            PRINT 'Registros processados: ' + CAST(@registros_inseridos AS VARCHAR);
+            PRINT 'Tempo de execução: ' + CAST(DATEDIFF(SECOND, @inicio_processo, GETDATE()) AS VARCHAR) + ' segundos';
             PRINT 'Status: Concluído com sucesso';
         END
         
         -- Atualizar estatísticas da tabela
-        UPDATE STATISTICS [gold].[captacao_liquida_cliente] WITH FULLSCAN;
-        
-        -- Limpar tabela temporária
-        DROP TABLE #temp_captacao_liquida_cliente;
+        UPDATE STATISTICS [gold].[captacao_liquida_cliente];
         
         RETURN 0; -- Sucesso
         
@@ -426,13 +312,9 @@ BEGIN
             PRINT '=== ERRO NA EXECUÇÃO ===';
             PRINT 'Número do erro: ' + CAST(@erro_numero AS VARCHAR);
             PRINT 'Mensagem: ' + @erro_mensagem;
-            PRINT 'Lote em processamento: ' + CAST(@lote_atual AS VARCHAR);
             PRINT 'Tempo decorrido: ' + CAST(DATEDIFF(SECOND, @inicio_processo, GETDATE()) AS VARCHAR) + ' segundos';
         END
         
-        -- Limpar tabela temporária se existir
-        IF OBJECT_ID('tempdb..#temp_captacao_liquida_cliente') IS NOT NULL
-            DROP TABLE #temp_captacao_liquida_cliente;
         
         -- Re-lançar o erro
         RAISERROR(@erro_mensagem, 16, 1);
@@ -445,7 +327,7 @@ GO
 -- ==============================================================================
 -- 7. PERMISSÕES
 -- ==============================================================================
--- GRANT EXECUTE ON [dbo].[prc_gold_to_table_captacao_liquida_cliente] TO [role_etl_gold]
+-- GRANT EXECUTE ON [gold].[prc_gold_to_table_captacao_liquida_cliente] TO [role_etl_gold]
 -- GO
 
 -- ==============================================================================
@@ -520,7 +402,8 @@ ORDER BY hora_carga;
 /*
 Versão  | Data       | Autor              | Descrição
 --------|------------|--------------------|-----------------------------------------
-1.0.0   | 2025-01-16 | Bruno Chiaramonti  | Criação inicial da procedure com processamento em lotes
+1.0.0   | 2025-01-16 | Bruno Chiaramonti  | Criação inicial da procedure
+1.1.0   | 2025-01-16 | Bruno Chiaramonti  | Migração para schema gold e remoção de processamento em lotes
 */
 
 -- ==============================================================================
@@ -528,11 +411,11 @@ Versão  | Data       | Autor              | Descrição
 -- ==============================================================================
 /*
 Notas importantes:
-- Procedure implementa processamento em lotes para otimizar grandes volumes
+- Procedure implementa MERGE para otimizar performance
 - Modo INCREMENTAL processa todos os dados disponíveis por padrão
-- Batch size configurável permite ajuste fino de performance
-- Transação por lote garante consistência sem bloquear por muito tempo
-- Estatísticas atualizadas com FULLSCAN ao final para otimizar consultas
+- Para limitar o período, especifique @data_inicio e @data_fim
+- Modo FULL recarrega todos os dados (mesma funcionalidade do INCREMENTAL sem parâmetros)
+- Transação garante consistência dos dados
 
 Agendamento recomendado:
 - Horário: 06:30 AM (após cargas do Bronze/Silver e tabela de assessores)
@@ -541,19 +424,17 @@ Agendamento recomendado:
 - Notificação: Em caso de falha ou execução > 5 minutos
 
 Performance esperada:
-- 10.000 registros: ~10 segundos
-- 100.000 registros: ~2 minutos
-- 1.000.000 registros: ~15-20 minutos
+- 100.000 registros: ~3-5 minutos
+- 1.000.000 registros: ~20-30 minutos
 
 Troubleshooting comum:
-1. Timeout: Aumentar batch_size ou executar fora do horário de pico
-2. Memória insuficiente: Reduzir batch_size
-3. Bloqueios: Verificar processos concorrentes nas tabelas Silver
-4. Espaço em tempdb: Monitorar crescimento durante execução
+1. Timeout: Executar fora do horário de pico ou processar períodos menores
+2. Deadlock: Verificar processos concorrentes nas tabelas Silver
+3. Espaço em tempdb: Verificar espaço disponível antes da execução
 
 Monitoramento:
 - Verificar log do SQL Agent diariamente
-- Alertas se execução > 5 minutos
+- Alertas se execução > 10 minutos
 - Revisar estatísticas de performance semanalmente
 
 Contato para dúvidas: bruno.chiaramonti@multisete.com
