@@ -100,11 +100,11 @@ GO
 -- ==============================================================================
 
 -- Remover procedure existente se necessário
-IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[gold].[prc_gold_to_table_captacao_liquida_cliente]'))
-    DROP PROCEDURE [gold].[prc_gold_to_table_captacao_liquida_cliente]
+IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[dbo].[prc_gold_to_table_captacao_liquida_cliente]'))
+    DROP PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_cliente]
 GO
 
-CREATE PROCEDURE [gold].[prc_gold_to_table_captacao_liquida_cliente]
+CREATE PROCEDURE [dbo].[prc_gold_to_table_captacao_liquida_cliente]
     @data_inicio DATE = NULL,
     @data_fim DATE = NULL,
     @modo_carga VARCHAR(10) = 'INCREMENTAL',
@@ -164,7 +164,7 @@ BEGIN
         WHERE data_ref BETWEEN @data_inicio AND @data_fim;
         
         -- Criar índice na tabela temporária
-        CREATE CLUSTERED INDEX IX_temp_captacao ON #temp_captacao_liquida_cliente (data_ref, conta_xp_cliente);
+        CREATE CLUSTERED INDEX IX_temp_captacao ON #temp_captacao_liquida_cliente (data_ref, conta_xp_cliente, cod_assessor);
         
         IF @debug = 1
             PRINT 'Dados carregados na tabela temporária: ' + CAST(@@ROWCOUNT AS VARCHAR) + ' registros';
@@ -172,7 +172,7 @@ BEGIN
         -- MERGE para atualizar tabela destino
         MERGE [gold].[captacao_liquida_cliente] AS destino
         USING #temp_captacao_liquida_cliente AS origem
-        ON (destino.data_ref = origem.data_ref AND destino.conta_xp_cliente = origem.conta_xp_cliente)
+        ON (destino.data_ref = origem.data_ref AND destino.conta_xp_cliente = origem.conta_xp_cliente AND destino.cod_assessor = origem.cod_assessor)
             
             -- Atualizar registros existentes que mudaram
             WHEN MATCHED AND (

@@ -332,6 +332,7 @@ FROM
     FULL OUTER JOIN metricas_resgate_cliente mrc
         ON mcc.data_ref = mrc.data_ref
         AND mcc.conta_xp_cliente = mrc.conta_xp_cliente
+        AND mcc.cod_assessor = mrc.cod_assessor
     LEFT JOIN [silver].[dim_clientes] dc
         ON COALESCE(mcc.conta_xp_cliente, mrc.conta_xp_cliente) = dc.cod_xp
     LEFT JOIN historico_cliente hc

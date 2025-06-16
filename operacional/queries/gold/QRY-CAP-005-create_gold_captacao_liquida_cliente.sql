@@ -100,7 +100,7 @@ CREATE TABLE [gold].[captacao_liquida_cliente](
     [codigo_cliente_crm] [varchar](100) NULL,
     
     -- Dimensão assessor
-    [cod_assessor] [varchar](50) NULL,
+    [cod_assessor] [varchar](50) NOT NULL,
     [nome_assessor] [varchar](200) NULL,
     [assessor_nivel] [varchar](50) NULL,
     [assessor_status] [varchar](50) NULL,
@@ -141,7 +141,8 @@ CREATE TABLE [gold].[captacao_liquida_cliente](
  CONSTRAINT [PK_captacao_liquida_cliente] PRIMARY KEY CLUSTERED 
 (
     [data_ref] ASC,
-    [conta_xp_cliente] ASC
+    [conta_xp_cliente] ASC,
+    [cod_assessor] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 WITH (DATA_COMPRESSION = PAGE)
@@ -327,7 +328,7 @@ Notas importantes:
 Troubleshooting comum:
 1. Espaço em disco: Monitorar crescimento mensal (~50-100MB/mês)
 2. Performance de carga: Se > 5 minutos, considerar particionamento
-3. Dados duplicados: Verificar chave primária (data_ref, conta_xp_cliente)
+3. Dados duplicados: Verificar chave primária (data_ref, conta_xp_cliente, cod_assessor)
 4. Memória: Ajustar batch size na procedure se necessário
 
 Contato para dúvidas: bruno.chiaramonti@multisete.com
