@@ -14,6 +14,68 @@ This is a Data Warehouse Documentation project for M7 Investimentos following a 
   - **gold_performance**: Performance metrics and KPIs for business analysis
   - **gold_llm**: Data optimized for Large Language Models and AI applications
 
+## ETL Pipeline (operacional/scripts/etl_xp_hub)
+
+### High-Level Architecture
+
+The ETL system follows a modular architecture with automatic processor discovery:
+
+```
+S3 → Extractors → Processors (Tabela) → Loaders → SQL Server (Bronze)
+```
+
+Key components:
+- **main.py**: Orchestrates the entire pipeline with automatic processor discovery
+- **Tabela class**: Generic Excel processor with chainable transformation methods
+- **Processors**: Specific transformations for each data type (captacao, contas, etc.)
+- **S3 Integration**: Downloads files following pattern `folder_name_YYYY-MM-DD.xlsx`
+
+### Running the ETL
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run full S3 pipeline
+python main.py
+
+# Run specific processor directly
+python executar_diversificacao.py arquivo.xlsx
+```
+
+### Environment Variables Required
+
+```bash
+# Database
+SQL_SERVER=your_server
+SQL_DATABASE=M7Medallion
+SQL_USERNAME=your_user
+SQL_PASSWORD=your_password
+SQL_SCHEMA=bronze  # default
+
+# AWS S3
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+AWS_REGION=sa-east-1  # default
+S3_BUCKET_NAME=m7investimentos  # default
+```
+
+### Adding New Processors
+
+1. Create `processors/new_type.py`
+2. Define function `processar_new_type(file_path) -> Tabela`
+3. Set constants: `NOME_TABELA`, `LOAD_STRATEGY`, `BATCH_SIZE`
+4. Optional: Define `PRE_LOAD_FUNCTION` and `POST_LOAD_FUNCTION`
+
+The main.py will automatically discover and use the new processor.
+
+### Load Strategies
+
+- **APPEND**: Add new records (default)
+- **TRUNCATE_LOAD**: Delete all and insert
+- **INCREMENTAL**: Add only new records based on key
+- **UPSERT**: Insert or update based on key
+
 ## File Naming Conventions
 
 ### SQL Query Files (MANDATORY)
@@ -196,4 +258,4 @@ WHEN NOT MATCHED BY SOURCE THEN DELETE;
 - **Current**: SQL Server with medallion architecture in M7Medallion database
 - **Legacy**: M7InvestimentosOLAP database (being phased out)
 - **Future**: Planning migration to Google BigQuery
-- **Scripts Directory**: Currently empty, awaiting migration from legacy system
+- **Scripts Directory**: ETL scripts in `operacional/scripts/etl_xp_hub` for Bronze layer population
