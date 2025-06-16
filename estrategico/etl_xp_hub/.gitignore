@@ -1,0 +1,21 @@
+# Arquivos temporários
+temp/
+
+# Logs
+logs/*.log
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Ambiente virtual
+venv/
+env/
+
+# Credenciais
+.env
+
+# Arquivos específicos do Windows
+Thumbs.db
+desktop.ini
