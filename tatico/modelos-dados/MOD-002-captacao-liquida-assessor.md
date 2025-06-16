@@ -61,8 +61,17 @@ Este modelo de dados documenta a estrutura da tabela `gold.captacao_liquida_asse
 │ assessor_nivel          │        │ tipo_estrutura       │
 └───────────┬─────────────┘        └──────────┬───────────┘
             │                                  │
-            │                                  │
-            ▼                                  ▼
+            │     ┌─────────────────────┐     │
+            │     │ fact_estrutura_     │     │
+            └────►│ pessoas (silver)    │◄────┘
+                  ├─────────────────────┤
+                  │ FK: crm_id          │
+                  │ FK: id_estrutura    │
+                  │ data_entrada        │
+                  │ data_saida          │
+                  └─────────────────────┘
+                            │
+                            ▼
 ┌─────────────────────────────────────────────────────────┐
 │            gold.captacao_liquida_assessor               │
 ├─────────────────────────────────────────────────────────┤
@@ -87,14 +96,6 @@ Este modelo de dados documenta a estrutura da tabela `gold.captacao_liquida_asse
 │ cod_assessor            │        │ cod_assessor         │
 │ captacao_bruta_total    │        │ resgate_bruto_total  │
 └─────────────────────────┘        └──────────────────────┘
-            │                                  │
-            ▼                                  ▼
-┌─────────────────────────────────────────────────────────┐
-│                 fact_estrutura_pessoas                   │
-│                       (silver)                           │
-├─────────────────────────────────────────────────────────┤
-│ crm_id, id_estrutura, data_entrada, data_saida         │
-└─────────────────────────────────────────────────────────┘
 ```
 
 ### 3.2 Principais Entidades

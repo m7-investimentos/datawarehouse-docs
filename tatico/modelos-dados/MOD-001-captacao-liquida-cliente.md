@@ -59,10 +59,20 @@ Este modelo de dados documenta a estrutura da tabela `gold.captacao_liquida_clie
 │ nome_cliente            │        │ cod_aai              │
 │ cpf/cnpj               │        │ nome_pessoa          │
 │ grupo_cliente          │        │ assessor_nivel       │
-└───────────┬─────────────┘        └──────────┬───────────┘
-            │                                  │
-            │                                  │
-            ▼                                  ▼
+│ data_cadastro          │        └──────────────────────┘
+└───────────┬─────────────┘                   
+            │                                  
+            │     ┌─────────────────────────────────┐     
+            │     │ fact_cliente_perfil_historico   │     
+            │     │           (silver)              │     
+            │     ├─────────────────────────────────┤     
+            │     │ PK: conta_xp_cliente, data_ref  │     
+            └────►│ FK: conta_xp_cliente            │     
+                  │ patrimonio_total                │     
+                  │ perfil_api                      │     
+                  │ assessor_xp                     │     
+                  └─────────────────────────────────┘     
+                                                          
 ┌─────────────────────────────────────────────────────────┐
 │            gold.captacao_liquida_cliente                │
 ├─────────────────────────────────────────────────────────┤
@@ -95,6 +105,7 @@ Este modelo de dados documenta a estrutura da tabela `gold.captacao_liquida_clie
 | dim_pessoas | Dimensão | Cadastro de assessores | 5K registros |
 | fact_captacao_bruta | Fato | Operações diárias de captação | 200K registros/mês |
 | fact_resgates | Fato | Operações diárias de resgate | 150K registros/mês |
+| fact_cliente_perfil_historico | Fato Histórico | Histórico mensal de perfil e patrimônio do cliente | 200K registros/mês |
 
 ## 4. Dicionário de Dados Detalhado
 
