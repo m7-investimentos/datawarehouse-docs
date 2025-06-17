@@ -6,9 +6,14 @@ Script para testar conexão com SQL Server e diagnosticar problemas
 import os
 import sys
 from dotenv import load_dotenv
+from pathlib import Path
 
-# Carregar variáveis de ambiente
-load_dotenv()
+# Diretórios
+BASE_DIR = Path(__file__).resolve().parent.parent  # Go up one level from tests directory
+CREDENTIALS_DIR = BASE_DIR / 'credentials'
+
+# Carregar variáveis de ambiente do arquivo .env no diretório credentials
+load_dotenv(CREDENTIALS_DIR / '.env')
 
 print("="*60)
 print("TESTE DE CONEXÃO SQL SERVER")

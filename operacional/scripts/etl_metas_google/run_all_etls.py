@@ -204,7 +204,9 @@ class ETLOrchestrator:
         
         try:
             # Construir comando
-            cmd = ['python3', etl['script']]
+            # Usar Python 3.11
+            python_cmd = '/opt/homebrew/bin/python3.11' if os.path.exists('/opt/homebrew/bin/python3.11') else 'python3.11'
+            cmd = [python_cmd, etl['script']]
             
             if self.debug:
                 cmd.append('--debug')

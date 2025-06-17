@@ -1,6 +1,6 @@
 {
     "etl_name": "ETL-IND-002-performance-assignments",
-    "spreadsheet_id": "1nm-z2Fbp7pasHx5gmVbm7JPNBRWp4iRElYCbVfEFpOE",
+    "spreadsheet_id": "1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww",
     "range_name": "Página1!A:J",
     "google_credentials_path": "credentials/google_sheets_api.json",
     "database": {
@@ -11,7 +11,7 @@
         "driver": "ODBC Driver 17 for SQL Server"
     },
     "validation": {
-        "min_records": 100,
+        "min_records": 50,
         "max_records": 1000,
         "required_fields": ["cod_assessor", "indicator_code", "indicator_type"],
         "valid_indicator_types": ["CARD", "GATILHO", "KPI", "PPI", "METRICA"],

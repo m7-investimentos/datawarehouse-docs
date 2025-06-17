@@ -72,19 +72,19 @@ except ImportError as e:
 # 2. CONFIGURAÇÕES E CONSTANTES
 # ==============================================================================
 
-# Carregar variáveis de ambiente do arquivo .env
-load_dotenv()
-
-# Configuração de logging
-LOG_FORMAT = '[%(asctime)s] [%(levelname)s] [ETL-IND-001] %(message)s'
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-
 # Diretórios
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_DIR = BASE_DIR / 'config'
 DATA_DIR = BASE_DIR / 'data'
 LOG_DIR = BASE_DIR / 'logs'
 CREDENTIALS_DIR = BASE_DIR / 'credentials'
+
+# Carregar variáveis de ambiente do arquivo .env no diretório credentials
+load_dotenv(CREDENTIALS_DIR / '.env')
+
+# Configuração de logging
+LOG_FORMAT = '[%(asctime)s] [%(levelname)s] [ETL-IND-001] %(message)s'
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 # Criar diretórios se não existirem
 for directory in [CONFIG_DIR, DATA_DIR, LOG_DIR, CREDENTIALS_DIR]:

@@ -31,10 +31,14 @@ etl_metas_google/
 ├── data/                     # Dados temporários
 ├── etl_001_indicators.py     # ETL de indicadores
 ├── etl_002_assignments.py    # ETL de atribuições
+├── run_all_etls.py          # Orquestrador de ETLs
+├── run_full_pipeline.py     # Pipeline completo (ETLs + Procedures)
+├── run_etl.sh               # Menu interativo para execução
 ├── test_connection.py        # Script para testar conexão
 ├── verify_data.py            # Script para verificar dados
 ├── requirements.txt          # Dependências Python
 ├── .env                      # Variáveis de ambiente
+├── CHANGES.md               # Histórico de alterações
 └── README.md                 # Este arquivo
 ```
 
@@ -60,7 +64,18 @@ etl_metas_google/
 
 ## Execução
 
-### ETL-001 - Indicadores de Performance
+### Método 1: Menu Interativo (Recomendado)
+```bash
+# Executar menu interativo
+./run_etl.sh
+
+# Ou se não tiver permissão de execução
+bash run_etl.sh
+```
+
+### Método 2: Execução Individual
+
+#### ETL-001 - Indicadores de Performance
 ```bash
 # Execução padrão
 python etl_001_indicators.py
@@ -72,7 +87,7 @@ python etl_001_indicators.py --debug
 python etl_001_indicators.py --dry-run
 ```
 
-### ETL-002 - Atribuições de Performance
+#### ETL-002 - Atribuições de Performance
 ```bash
 # Execução padrão
 python etl_002_assignments.py
@@ -82,6 +97,35 @@ python etl_002_assignments.py --validate-only
 
 # Modo debug com dry run
 python etl_002_assignments.py --debug --dry-run
+```
+
+### Método 3: Execução em Batch
+
+#### Executar todos os ETLs
+```bash
+# Todos os ETLs em sequência
+python run_all_etls.py
+
+# Apenas ETLs específicos
+python run_all_etls.py --only-etl 001 002
+
+# Continuar mesmo se houver erro
+python run_all_etls.py --continue-on-error
+```
+
+#### Pipeline Completo (ETLs + Procedures)
+```bash
+# Pipeline completo
+python run_full_pipeline.py
+
+# Apenas ETLs
+python run_full_pipeline.py --only-etls
+
+# Apenas procedures
+python run_full_pipeline.py --only-procedures
+
+# Modo debug
+python run_full_pipeline.py --debug
 ```
 
 ## Fluxo de Processamento

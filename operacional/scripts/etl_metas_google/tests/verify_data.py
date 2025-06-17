@@ -6,9 +6,14 @@ Script para verificar se os dados foram carregados na tabela Bronze
 import os
 import pyodbc
 from dotenv import load_dotenv
+from pathlib import Path
 
-# Carregar variáveis de ambiente
-load_dotenv()
+# Diretórios
+BASE_DIR = Path(__file__).resolve().parent
+CREDENTIALS_DIR = BASE_DIR / 'credentials'
+
+# Carregar variáveis de ambiente do arquivo .env no diretório credentials
+load_dotenv(CREDENTIALS_DIR / '.env')
 
 # Configuração da conexão
 db_server = os.getenv('DB_SERVER')
