@@ -180,11 +180,24 @@ class PerformanceIndicatorsETL:
         # Banco de dados
         try:
             db_config = self.config['database']
-            connection_string = (
-                f"mssql+pyodbc://{db_config['user']}:{db_config['password']}@"
-                f"{db_config['server']}/{db_config['database']}?"
-                f"driver={db_config['driver']}"
+            # Remover chaves extras do driver se existirem
+            driver = db_config['driver'].strip('{}')
+            
+            # Usar urllib para escapar a senha corretamente
+            from urllib.parse import quote_plus
+            
+            # Criar connection string usando ODBC direto (mais confiável)
+            conn_str = (
+                f"DRIVER={{{driver}}};"
+                f"SERVER={db_config['server']};"
+                f"DATABASE={db_config['database']};"
+                f"UID={db_config['user']};"
+                f"PWD={db_config['password']};"
+                f"TrustServerCertificate=yes"
             )
+            
+            # URL para SQLAlchemy usando odbc_connect
+            connection_string = f"mssql+pyodbc:///?odbc_connect={quote_plus(conn_str)}"
             self.db_engine = create_engine(connection_string)
             self.logger.info("Conexão com banco de dados estabelecida")
         except Exception as e:
@@ -314,8 +327,6 @@ class PerformanceIndicatorsETL:
             df['aggregation'] = df['aggregation'].fillna('CUSTOM')
             
         # T3: Enriquecimento de metadados
-        df['extraction_timestamp'] = datetime.now()
-        df['source_file'] = f'google_sheets:{SPREADSHEET_ID}'
         df['row_number'] = range(2, len(df) + 2)  # Número da linha na planilha
         
         # Calcular hash para cada linha
@@ -351,7 +362,11 @@ class PerformanceIndicatorsETL:
             return 0
             
         try:
-            with self.db_engine.begin() as conn:
+            # Usar autocommit=False para controlar transação manualmente
+            conn = self.db_engine.connect()
+            trans = conn.begin()
+            
+            try:
                 # Truncate existing data
                 self.logger.info("Limpando dados existentes...")
                 conn.execute(text("TRUNCATE TABLE bronze.performance_indicators"))
@@ -389,10 +404,24 @@ class PerformanceIndicatorsETL:
                 records_loaded = len(load_data)
                 self.logger.info(f"Carregados {records_loaded} registros no Bronze")
                 
-                # Registrar auditoria
-                self._log_audit(conn, records_loaded, 'SUCCESS')
+                # Commit explícito
+                trans.commit()
+                self.logger.info("Transação commitada com sucesso")
+                
+                # Registrar auditoria (fora da transação principal)
+                try:
+                    self._log_audit(conn, records_loaded, 'SUCCESS')
+                except Exception as audit_error:
+                    self.logger.warning(f"Erro ao registrar auditoria: {audit_error}")
                 
                 return records_loaded
+                
+            except Exception as e:
+                trans.rollback()
+                self.logger.error(f"Erro durante carga, rollback executado: {e}")
+                raise
+            finally:
+                conn.close()
                 
         except Exception as e:
             self.logger.error(f"Erro durante carga: {e}")
