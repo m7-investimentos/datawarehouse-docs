@@ -32,7 +32,7 @@ EXEMPLOS DE USO:
     python etl_001_indicators.py
     
     # Com configuração customizada
-    python etl_001_indicators.py --config config/production.json
+    python etl_001_indicators.py --config config/etl_001_production.json
     
     # Modo debug com dry-run
     python etl_001_indicators.py --debug --dry-run
@@ -553,8 +553,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         '--config',
         type=str,
-        default=str(CONFIG_DIR / 'config.json'),
-        help='Arquivo de configuração (default: config/config.json)'
+        default=str(CONFIG_DIR / 'etl_001_config.json'),
+        help='Arquivo de configuração (default: config/etl_001_config.json)'
     )
     
     parser.add_argument(

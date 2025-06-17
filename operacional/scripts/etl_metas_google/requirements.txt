@@ -1,4 +1,4 @@
-# ETL-IND-001 - Performance Indicators ETL
+# ETL-IND-001/002 - Performance Indicators & Assignments ETL
 # Python 3.8+
 
 # Core dependencies
@@ -18,6 +18,10 @@ sqlalchemy>=1.4.0
 # Utilities
 tenacity>=8.0.0  # Para retry logic
 python-dotenv>=0.19.0  # Para variáveis de ambiente
+
+# Additional dependencies for data validation
+jsonschema>=3.2.0
+python-dateutil>=2.8.0
 
 # Development dependencies (opcional)
 pytest>=7.0.0
