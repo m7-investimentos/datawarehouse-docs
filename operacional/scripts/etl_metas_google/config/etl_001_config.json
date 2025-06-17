@@ -22,7 +22,7 @@
         "archive_days": 90
     },
     "notifications": {
-        "email_on_error": ["arquitetura.dados@m7investimentos.com.br"],
-        "email_on_warning": ["gestao.performance@m7investimentos.com.br"]
+        "email_on_error": ["bruno.chiaramonti@multisete.com"],
+        "email_on_warning": ["bruno.chiaramonti@multisete.com"]
     }
 }
