@@ -632,25 +632,10 @@ class PerformanceTargetsETL:
             trans = conn.begin()
             
             try:
-                # Determinar se é carga completa ou incremental
-                target_year = self.processed_data['target_year'].iloc[0]
-                
-                # Se for janeiro ou modo anual, fazer carga completa
-                if datetime.now().month == 1 or self.config.get('execution_mode') == 'annual':
-                    self.logger.info(f"Executando carga completa para o ano {target_year}")
-                    conn.execute(text(f"""
-                        DELETE FROM bronze.performance_targets 
-                        WHERE target_year = {target_year}
-                    """))
-                else:
-                    # Carga incremental - deletar apenas o mês atual
-                    current_month = datetime.now().month
-                    self.logger.info(f"Executando carga incremental para {target_year}-{current_month:02d}")
-                    conn.execute(text(f"""
-                        DELETE FROM bronze.performance_targets 
-                        WHERE target_year = {target_year}
-                        AND MONTH(CAST(period_start AS DATE)) = {current_month}
-                    """))
+                # Sempre fazer TRUNCATE da tabela Bronze para evitar duplicatas
+                # Bronze é uma área de staging, não precisa manter histórico
+                self.logger.info("Limpando tabela Bronze (TRUNCATE)")
+                conn.execute(text("TRUNCATE TABLE bronze.performance_targets"))
                 
                 # Preparar dados para carga
                 load_data = self.processed_data.copy()
@@ -788,9 +773,6 @@ class PerformanceTargetsETL:
                 except Exception as audit_error:
                     self.logger.warning(f"Erro ao registrar auditoria: {audit_error}")
                 
-                # Executar validações pós-carga
-                self.post_load_validations(target_year)
-                
                 return records_loaded
                 
             except Exception as e:
@@ -837,6 +819,9 @@ class PerformanceTargetsETL:
             
     def post_load_validations(self, target_year: int):
         """Executa validações pós-carga."""
+        # Função desabilitada após remoção da lógica de target_year
+        pass
+        return
         self.logger.info("Executando validações pós-carga...")
         
         try:

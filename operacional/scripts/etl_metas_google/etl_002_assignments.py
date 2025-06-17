@@ -555,12 +555,10 @@ class PerformanceAssignmentsETL:
             trans = conn.begin()
             
             try:
-                # Limpar dados existentes do mesmo dia
-                self.logger.info("Limpando dados existentes do dia...")
-                conn.execute(text("""
-                    DELETE FROM bronze.performance_assignments 
-                    WHERE CAST(load_timestamp AS DATE) = CAST(GETDATE() AS DATE)
-                """))
+                # Sempre fazer TRUNCATE da tabela Bronze para evitar duplicatas
+                # Bronze é uma área de staging, não precisa manter histórico
+                self.logger.info("Limpando tabela Bronze (TRUNCATE)")
+                conn.execute(text("TRUNCATE TABLE bronze.performance_assignments"))
                 
                 # Preparar dados para carga
                 load_data = self.processed_data.copy()

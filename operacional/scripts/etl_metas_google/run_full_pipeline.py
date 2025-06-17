@@ -81,29 +81,29 @@ DB_CONFIG = {
 # Definição das procedures e ordem de execução
 PROCEDURES = [
     {
-        'name': 'prc_bronze_to_silver_indicators',
-        'schema': 'silver',
+        'name': 'prc_process_indicators_to_silver',
+        'schema': 'bronze',
         'description': 'Processa indicadores de Bronze para Silver',
         'parameters': {
-            '@debug': 1
+            '@debug_mode': 1
         }
     },
     {
         'name': 'prc_bronze_to_silver_assignments',
-        'schema': 'silver',
+        'schema': 'bronze',
         'description': 'Processa atribuições de Bronze para Silver',
         'parameters': {
             '@validate_weights': 1,
-            '@debug': 1
+            '@debug': 0
         }
     },
     {
         'name': 'prc_bronze_to_silver_performance_targets',
-        'schema': 'silver',
+        'schema': 'bronze',
         'description': 'Processa metas de Bronze para Silver',
         'parameters': {
             '@validate_completeness': 1,
-            '@debug': 1
+            '@debug_mode': 1
         }
     }
 ]
@@ -145,7 +145,9 @@ def get_db_connection():
         f"PWD={DB_CONFIG['password']};"
         f"TrustServerCertificate=yes"
     )
-    return pyodbc.connect(conn_str, timeout=30)
+    conn = pyodbc.connect(conn_str, timeout=30)
+    conn.autocommit = True  # Deixar cada procedure gerenciar suas próprias transações
+    return conn
 
 def run_etls(logger: logging.Logger, debug: bool = False) -> int:
     """
@@ -222,17 +224,17 @@ def execute_procedure(conn: pyodbc.Connection, proc_def: Dict,
         # Executar procedure
         cursor.execute(exec_cmd)
         
-        # Capturar mensagens
+        # Capturar mensagens e resultsets
         while cursor.nextset():
             pass
             
-        conn.commit()
+        # Não fazer commit aqui - deixar a procedure gerenciar sua própria transação
         logger.info(f"Procedure {proc_def['name']} executada com sucesso")
         return True
         
     except Exception as e:
         logger.error(f"Erro ao executar procedure {proc_def['name']}: {e}")
-        conn.rollback()
+        # Com autocommit=True, não precisamos fazer rollback manual
         return False
 
 def run_procedures(logger: logging.Logger, debug: bool = False) -> int:

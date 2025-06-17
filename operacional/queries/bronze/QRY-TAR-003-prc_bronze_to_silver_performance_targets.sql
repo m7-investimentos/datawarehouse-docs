@@ -144,7 +144,11 @@ BEGIN
     END;
     
     BEGIN TRY
-        BEGIN TRANSACTION;
+        -- Verificar se já estamos em uma transação
+        DECLARE @trancount INT = @@TRANCOUNT;
+        
+        IF @trancount = 0
+            BEGIN TRANSACTION;
         
         -- ==============================================================================
         -- ETAPA 1: VALIDAÇÕES INICIAIS
@@ -158,6 +162,10 @@ BEGIN
           
         IF @row_count = 0
         BEGIN
+            -- Commit transação vazia se iniciamos uma
+            IF @trancount = 0 AND @@TRANCOUNT > 0
+                COMMIT TRANSACTION;
+                
             RAISERROR('Nenhum registro encontrado para processar no ano %d', 16, 1, @target_year);
             RETURN 1;
         END;
@@ -446,13 +454,16 @@ BEGIN
         -- Limpar tabelas temporárias
         DROP TABLE #targets_staging;
         
-        COMMIT TRANSACTION;
+        -- Commit apenas se iniciamos a transação
+        IF @trancount = 0 AND @@TRANCOUNT > 0
+            COMMIT TRANSACTION;
+            
         RETURN 0;
         
     END TRY
     BEGIN CATCH
-        -- Rollback em caso de erro
-        IF @@TRANCOUNT > 0
+        -- Rollback apenas se iniciamos a transação
+        IF @trancount = 0 AND @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
         
         -- Capturar informações do erro

@@ -312,9 +312,9 @@ class PerformanceIndicatorsETL:
         df['is_inverted'] = df.get('is_inverted', '').map(bool_map).fillna(0).astype(int)
         df['is_active'] = df.get('is_active', '').map(bool_map).fillna(1).astype(int)
         
-        # Datas
+        # Remover created_date se existir (não faz parte do Bronze)
         if 'created_date' in df.columns:
-            df['created_date'] = pd.to_datetime(df['created_date'], errors='coerce')
+            df = df.drop(columns=['created_date'])
         
         # Textos vazios
         text_columns = ['formula', 'notes', 'description']
@@ -385,7 +385,7 @@ class PerformanceIndicatorsETL:
                 # Converter tudo para string para Bronze (exceto campos de controle)
                 string_columns = ['indicator_code', 'indicator_name', 'category', 'unit',
                                 'aggregation', 'formula', 'is_inverted', 'is_active',
-                                'description', 'created_date', 'notes']
+                                'description', 'notes']
                 
                 for col in string_columns:
                     if col in load_data.columns:
