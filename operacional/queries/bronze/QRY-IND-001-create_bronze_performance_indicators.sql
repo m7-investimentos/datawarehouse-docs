@@ -131,6 +131,9 @@ CREATE TABLE [bronze].[performance_indicators] (
     [processing_status] VARCHAR(50) NULL,
     [processing_notes] VARCHAR(MAX) NULL,
     
+    -- Coluna computada para permitir indexação do indicator_code
+    [indicator_code_indexed] AS CAST(LEFT([indicator_code], 100) AS VARCHAR(100)) PERSISTED,
+    
     -- Constraints
     CONSTRAINT [PK_bronze_performance_indicators] PRIMARY KEY CLUSTERED ([load_id] ASC)
 ) ON [PRIMARY];
@@ -152,9 +155,9 @@ ON [bronze].[performance_indicators] ([is_processed])
 WHERE [is_processed] = 0;
 GO
 
--- Índice para busca por código do indicador
+-- Índice para busca por código do indicador (usando coluna computada)
 CREATE NONCLUSTERED INDEX [IX_bronze_performance_indicators_code]
-ON [bronze].[performance_indicators] ([indicator_code])
+ON [bronze].[performance_indicators] ([indicator_code_indexed])
 WHERE [indicator_code] IS NOT NULL;
 GO
 
@@ -209,6 +212,14 @@ EXEC sys.sp_addextendedproperty
     @level0type=N'SCHEMA', @level0name=N'bronze',
     @level1type=N'TABLE', @level1name=N'performance_indicators',
     @level2type=N'COLUMN', @level2name=N'row_hash';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Coluna computada com os primeiros 100 caracteres do indicator_code para permitir indexação',
+    @level0type=N'SCHEMA', @level0name=N'bronze',
+    @level1type=N'TABLE', @level1name=N'performance_indicators',
+    @level2type=N'COLUMN', @level2name=N'indicator_code_indexed';
 GO
 
 -- ==============================================================================
