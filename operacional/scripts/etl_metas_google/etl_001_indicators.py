@@ -62,6 +62,7 @@ try:
     import pyodbc
     from sqlalchemy import create_engine, text
     from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+    from dotenv import load_dotenv
 except ImportError as e:
     print(f"Erro ao importar biblioteca: {e}")
     print("Execute: pip install -r requirements.txt")
@@ -70,6 +71,9 @@ except ImportError as e:
 # ==============================================================================
 # 2. CONFIGURAÇÕES E CONSTANTES
 # ==============================================================================
+
+# Carregar variáveis de ambiente do arquivo .env
+load_dotenv()
 
 # Configuração de logging
 LOG_FORMAT = '[%(asctime)s] [%(levelname)s] [ETL-IND-001] %(message)s'
@@ -558,11 +562,15 @@ def load_config(config_path: str) -> Dict[str, Any]:
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
             
-        # Substituir variáveis de ambiente
+        # Substituir variáveis de ambiente (usando os nomes corretos do .env)
         config['database']['server'] = os.getenv('DB_SERVER', config['database']['server'])
-        config['database']['database'] = os.getenv('DB_NAME', config['database']['database'])
-        config['database']['user'] = os.getenv('DB_USER', config['database']['user'])
+        config['database']['database'] = os.getenv('DB_DATABASE', config['database']['database'])
+        config['database']['user'] = os.getenv('DB_USERNAME', config['database']['user'])
         config['database']['password'] = os.getenv('DB_PASSWORD', config['database']['password'])
+        
+        # Driver ODBC (caso esteja no .env)
+        if os.getenv('DB_DRIVER'):
+            config['database']['driver'] = os.getenv('DB_DRIVER')
         
         return config
         
