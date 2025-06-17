@@ -49,7 +49,7 @@ Estrutura da tabela criada:
 | Coluna                | Tipo           | Descrição                                   |
 |-----------------------|----------------|---------------------------------------------|
 | assignment_id         | INT            | ID único da atribuição (PK)                 |
-| cod_assessor          | VARCHAR(20)    | Código do assessor                          |
+| crm_id          | VARCHAR(20)    | Código do assessor                          |
 | indicator_id          | INT            | FK para silver.performance_indicators     |
 | indicator_weight      | DECIMAL(5,2)   | Peso do indicador (0.00-100.00)            |
 | valid_from            | DATE           | Data início vigência                        |
@@ -108,7 +108,7 @@ CREATE TABLE [silver].[performance_assignments] (
     [assignment_id] INT IDENTITY(1,1) NOT NULL,
     
     -- Dados principais
-    [cod_assessor] VARCHAR(20) NOT NULL,
+    [crm_id] VARCHAR(20) NOT NULL,
     [indicator_id] INT NOT NULL,
     [indicator_weight] DECIMAL(5,2) NOT NULL DEFAULT 0.00,
     
@@ -150,7 +150,7 @@ GO
 -- Unique constraint para evitar duplicatas ativas
 CREATE UNIQUE NONCLUSTERED INDEX [UQ_performance_assignments_active]
 ON [silver].[performance_assignments] (
-    [cod_assessor] ASC,
+    [crm_id] ASC,
     [indicator_id] ASC,
     [valid_from] ASC
 )
@@ -164,7 +164,7 @@ GO
 -- Índice para busca por assessor
 CREATE NONCLUSTERED INDEX [IX_performance_assignments_assessor]
 ON [silver].[performance_assignments] (
-    [cod_assessor] ASC,
+    [crm_id] ASC,
     [valid_from] ASC,
     [valid_to] ASC
 )
@@ -178,7 +178,7 @@ ON [silver].[performance_assignments] (
     [indicator_id] ASC,
     [is_active] ASC
 )
-INCLUDE ([cod_assessor], [indicator_weight], [valid_from], [valid_to]);
+INCLUDE ([crm_id], [indicator_weight], [valid_from], [valid_to]);
 GO
 
 -- Índice para vigência atual
@@ -187,7 +187,7 @@ ON [silver].[performance_assignments] (
     [valid_from] ASC,
     [valid_to] ASC
 )
-INCLUDE ([cod_assessor], [indicator_id], [indicator_weight])
+INCLUDE ([crm_id], [indicator_id], [indicator_weight])
 WHERE [is_active] = 1 AND [valid_to] IS NULL;
 GO
 
@@ -204,7 +204,7 @@ CREATE VIEW [silver].[vw_performance_assignments_current]
 AS
 WITH AssignmentsSummary AS (
     SELECT 
-        a.cod_assessor,
+        a.crm_id,
         i.category,
         SUM(a.indicator_weight) as total_weight,
         COUNT(*) as indicator_count,
@@ -215,10 +215,10 @@ WITH AssignmentsSummary AS (
     WHERE a.is_active = 1
       AND a.valid_to IS NULL
       AND GETDATE() >= a.valid_from
-    GROUP BY a.cod_assessor, i.category
+    GROUP BY a.crm_id, i.category
 )
 SELECT 
-    cod_assessor,
+    crm_id,
     category,
     total_weight,
     indicator_count,
@@ -256,7 +256,7 @@ EXEC sys.sp_addextendedproperty
     @value=N'Código do assessor (formato AAI###)', 
     @level0type=N'SCHEMA', @level0name=N'silver',
     @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'cod_assessor';
+    @level2type=N'COLUMN', @level2name=N'crm_id';
 GO
 
 EXEC sys.sp_addextendedproperty 
@@ -298,7 +298,7 @@ GO
 /*
 -- Query para verificar soma de pesos por assessor
 SELECT 
-    a.cod_assessor,
+    a.crm_id,
     i.indicator_type,
     COUNT(*) as qtd_indicadores,
     SUM(a.indicator_weight) as soma_pesos,
@@ -310,12 +310,12 @@ SELECT
 FROM silver.performance_assignments a
 INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
 WHERE a.is_active = 1 AND a.valid_to IS NULL
-GROUP BY a.cod_assessor, i.indicator_type
-ORDER BY a.cod_assessor, i.indicator_type;
+GROUP BY a.crm_id, i.indicator_type
+ORDER BY a.crm_id, i.indicator_type;
 
 -- Query para verificar histórico de mudanças
 SELECT 
-    cod_assessor,
+    crm_id,
     valid_from,
     valid_to,
     COUNT(*) as qtd_indicadores,
@@ -324,7 +324,7 @@ SELECT
     approved_date,
     approved_by
 FROM silver.performance_assignments
-WHERE cod_assessor = 'AAI001'  -- Exemplo
+WHERE crm_id = 'AAI001'  -- Exemplo
 ORDER BY valid_from DESC;
 */
 

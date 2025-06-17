@@ -109,8 +109,8 @@ Extrair dados de atribuições de indicadores de performance por assessor da pla
 ### 6.1 Limpeza de Dados
 | Validação | Regra | Ação se Falha |
 |-----------|-------|---------------|
-| Campos obrigatórios | cod_assessor, indicator_code, indicator_type NOT NULL | Quarentena |
-| Formato cod_assessor | Padrão AAI + números (ex: AAI001) | Log warning + aceitar |
+| Campos obrigatórios | crm_id, indicator_code, indicator_type NOT NULL | Quarentena |
+| Formato crm_id | Padrão AAI + números (ex: AAI001) | Log warning + aceitar |
 | indicator_type válido | IN ('CARD', 'GATILHO', 'KPI', 'PPI', 'METRICA') | Quarentena |
 | Weight para CARD | Entre 0.01 e 100.00 | Quarentena |
 | Weight para não-CARD | Deve ser 0.00 ou NULL | Ajustar para 0.00 |
@@ -122,8 +122,8 @@ Extrair dados de atribuições de indicadores de performance por assessor da pla
 #### T1: Padronização de Códigos e Tipos
 ```python
 def standardize_assignments(df):
-    # Padronizar cod_assessor
-    df['cod_assessor'] = df['cod_assessor'].str.upper().str.strip()
+    # Padronizar crm_id
+    df['crm_id'] = df['crm_id'].str.upper().str.strip()
     
     # Padronizar indicator_code
     df['indicator_code'] = df['indicator_code'].str.upper().str.replace(' ', '_')
@@ -151,7 +151,7 @@ def validate_weights(df):
                  (df['valid_to'].isna())]
     
     # Agrupar por assessor e valid_from
-    weight_sums = card_df.groupby(['cod_assessor', 'valid_from'])['weight'].sum()
+    weight_sums = card_df.groupby(['crm_id', 'valid_from'])['weight'].sum()
     
     # Verificar somas diferentes de 100
     invalid_weights = weight_sums[abs(weight_sums - 100.0) > 0.01]
@@ -159,7 +159,7 @@ def validate_weights(df):
     for (assessor, valid_from), total_weight in invalid_weights.items():
         validation_errors.append({
             'error_type': 'INVALID_WEIGHT_SUM',
-            'cod_assessor': assessor,
+            'crm_id': assessor,
             'valid_from': valid_from,
             'total_weight': total_weight,
             'expected': 100.0
@@ -183,7 +183,7 @@ def validate_relationships(df, indicators_df):
     for _, row in invalid_codes.iterrows():
         validation_errors.append({
             'error_type': 'INVALID_INDICATOR_CODE',
-            'cod_assessor': row['cod_assessor'],
+            'crm_id': row['crm_id'],
             'indicator_code': row['indicator_code'],
             'message': 'Código não existe em performance_indicators'
         })
@@ -197,7 +197,7 @@ def add_metadata(df):
     df['extraction_timestamp'] = datetime.now()
     df['source_file'] = 'google_sheets:m7_performance_assignments'
     df['row_hash'] = df.apply(lambda x: hashlib.md5(
-        f"{x['cod_assessor']}_{x['indicator_code']}_{x['valid_from']}".encode()
+        f"{x['crm_id']}_{x['indicator_code']}_{x['valid_from']}".encode()
     ).hexdigest(), axis=1)
     
     # Adicionar flag de vigência
@@ -221,7 +221,7 @@ CREATE TABLE bronze.performance_assignments (
     load_source VARCHAR(200) NOT NULL DEFAULT 'GoogleSheets:m7_performance_assignments',
     
     -- Campos da planilha
-    cod_assessor VARCHAR(MAX),
+    crm_id VARCHAR(MAX),
     nome_assessor VARCHAR(MAX),
     indicator_code VARCHAR(MAX),
     indicator_type VARCHAR(MAX),
@@ -249,7 +249,7 @@ CREATE TABLE bronze.performance_assignments (
 
 -- Índice para performance
 CREATE INDEX IX_bronze_assignments_lookup 
-ON bronze.performance_assignments (cod_assessor, indicator_code, valid_from)
+ON bronze.performance_assignments (crm_id, indicator_code, valid_from)
 WHERE is_processed = 0;
 ```
 
@@ -305,7 +305,7 @@ logger.info(f"Planilha: {SPREADSHEET_ID}")
 
 # Durante processamento
 logger.info(f"Registros extraídos: {len(df)}")
-logger.info(f"Assessores únicos: {df['cod_assessor'].nunique()}")
+logger.info(f"Assessores únicos: {df['crm_id'].nunique()}")
 logger.info(f"Indicadores únicos: {df['indicator_code'].nunique()}")
 
 # Validações
@@ -325,7 +325,7 @@ logger.info(f"===== ETL-002 CONCLUÍDO =====")
 CREATE TABLE audit.assignment_weight_history (
     audit_id INT IDENTITY(1,1) PRIMARY KEY,
     audit_timestamp DATETIME DEFAULT GETDATE(),
-    cod_assessor VARCHAR(20),
+    crm_id VARCHAR(20),
     valid_from DATE,
     indicator_type VARCHAR(20),
     total_weight DECIMAL(5,2),
@@ -342,7 +342,7 @@ BEGIN
     INSERT INTO audit.assignment_weight_history
     SELECT 
         GETDATE(),
-        cod_assessor,
+        crm_id,
         valid_from,
         'CARD',
         SUM(CAST(weight AS DECIMAL(5,2))),
@@ -350,7 +350,7 @@ BEGIN
              THEN 1 ELSE 0 END,
         (SELECT indicator_code, weight 
          FROM bronze.performance_assignments b2
-         WHERE b2.cod_assessor = b1.cod_assessor
+         WHERE b2.crm_id = b1.crm_id
            AND b2.valid_from = b1.valid_from
            AND b2.indicator_type = 'CARD'
            AND b2.load_id = @load_id
@@ -359,7 +359,7 @@ BEGIN
     FROM bronze.performance_assignments b1
     WHERE indicator_type = 'CARD'
       AND load_id = @load_id
-    GROUP BY cod_assessor, valid_from;
+    GROUP BY crm_id, valid_from;
 END;
 ```
 
@@ -368,7 +368,7 @@ END;
 ### 10.1 Validações Pós-Carga
 | Validação | Query/Método | Threshold | Ação se Falha |
 |-----------|--------------|-----------|---------------|
-| Todos assessores têm indicadores | COUNT(DISTINCT cod_assessor) | > 30 | Verificar dados fonte |
+| Todos assessores têm indicadores | COUNT(DISTINCT crm_id) | > 30 | Verificar dados fonte |
 | Soma pesos CARD = 100% | Query complexa | 100% compliance | Notificar gestão |
 | Indicator codes válidos | JOIN com indicators | 100% match | Revisar novos códigos |
 | Sem duplicatas ativas | Unique check | 0 duplicatas | Investigar |
@@ -378,7 +378,7 @@ END;
 -- Validar soma de pesos por assessor
 WITH weight_check AS (
     SELECT 
-        cod_assessor,
+        crm_id,
         valid_from,
         SUM(CAST(weight AS DECIMAL(5,2))) as total_weight,
         COUNT(*) as indicator_count
@@ -386,10 +386,10 @@ WITH weight_check AS (
     WHERE indicator_type = 'CARD'
       AND valid_to IS NULL
       AND is_processed = 0
-    GROUP BY cod_assessor, valid_from
+    GROUP BY crm_id, valid_from
 )
 SELECT 
-    cod_assessor,
+    crm_id,
     valid_from,
     total_weight,
     CASE WHEN ABS(total_weight - 100.0) < 0.01 
@@ -397,12 +397,12 @@ SELECT
          ELSE 'ERRO' END as status
 FROM weight_check
 WHERE ABS(total_weight - 100.0) >= 0.01
-ORDER BY cod_assessor;
+ORDER BY crm_id;
 
 -- Verificar códigos órfãos
 SELECT DISTINCT 
     a.indicator_code,
-    COUNT(DISTINCT a.cod_assessor) as assessores_afetados
+    COUNT(DISTINCT a.crm_id) as assessores_afetados
 FROM bronze.performance_assignments a
 LEFT JOIN bronze.performance_indicators i
     ON a.indicator_code = i.indicator_code
@@ -588,11 +588,11 @@ class PerformanceAssignmentsETL:
         
         # Adicionar erros de validação
         if self.validation_errors:
-            error_dict = {f"{e['cod_assessor']}_{e.get('valid_from', '')}": e 
+            error_dict = {f"{e['crm_id']}_{e.get('valid_from', '')}": e 
                          for e in self.validation_errors}
             df['validation_errors'] = df.apply(
                 lambda x: json.dumps(
-                    error_dict.get(f"{x['cod_assessor']}_{x['valid_from']}", {})
+                    error_dict.get(f"{x['crm_id']}_{x['valid_from']}", {})
                 ), axis=1
             )
         
@@ -693,7 +693,7 @@ BEGIN
         -- 2. Transformar tipos de dados
         WITH transformed AS (
             SELECT 
-                cod_assessor,
+                crm_id,
                 nome_assessor,
                 indicator_code,
                 indicator_type,
@@ -712,7 +712,7 @@ BEGIN
         -- 3. Merge com silver
         MERGE silver.performance_assignments AS target
         USING transformed AS source
-            ON target.cod_assessor = source.cod_assessor
+            ON target.crm_id = source.crm_id
            AND target.indicator_code = source.indicator_code
            AND target.valid_from = source.valid_from
         WHEN MATCHED AND target.valid_to IS NULL THEN
@@ -721,9 +721,9 @@ BEGIN
                 modified_date = GETDATE(),
                 modified_by = source.created_by
         WHEN NOT MATCHED THEN
-            INSERT (cod_assessor, indicator_id, indicator_weight, 
+            INSERT (crm_id, indicator_id, indicator_weight, 
                    valid_from, valid_to, created_by, created_date)
-            VALUES (source.cod_assessor, 
+            VALUES (source.crm_id, 
                    (SELECT indicator_id FROM silver.performance_indicators 
                     WHERE indicator_code = source.indicator_code),
                    source.indicator_weight,

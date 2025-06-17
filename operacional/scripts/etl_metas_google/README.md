@@ -73,6 +73,22 @@ etl_metas_google/
 bash run_etl.sh
 ```
 
+O menu oferece as seguintes opções:
+
+**Execução Individual:**
+- ETL-001 (Indicators) - Apenas extração
+- ETL-002 (Assignments) - Apenas extração
+- ETL-003 (Targets) - Apenas extração
+
+**Pipelines Completos (ETL + Procedure):**
+- Pipeline 001: Indicators (ETL + Bronze to Silver)
+- Pipeline 002: Assignments (ETL + Bronze to Silver)
+- Pipeline 003: Targets (ETL + Bronze to Silver)
+
+**Execução em Lote:**
+- Todos os ETLs em sequência
+- Todos os pipelines completos
+
 ### Método 2: Execução Individual
 
 #### ETL-001 - Indicadores de Performance
@@ -99,7 +115,21 @@ python etl_002_assignments.py --validate-only
 python etl_002_assignments.py --debug --dry-run
 ```
 
-### Método 3: Execução em Batch
+### Método 3: Execução de Pipeline Individual
+
+#### Executar pipeline específico (ETL + Procedure)
+```bash
+# Pipeline 001 - Indicators
+python run_pipeline.py 001
+
+# Pipeline 002 - Assignments  
+python run_pipeline.py 002
+
+# Pipeline 003 - Targets
+python run_pipeline.py 003
+```
+
+### Método 4: Execução em Batch
 
 #### Executar todos os ETLs
 ```bash

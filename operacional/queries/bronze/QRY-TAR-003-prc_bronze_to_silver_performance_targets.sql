@@ -181,7 +181,7 @@ BEGIN
         BEGIN
             -- Criar tabela temporária para análise
             CREATE TABLE #completeness_check (
-                cod_assessor VARCHAR(20),
+                crm_id VARCHAR(20),
                 indicator_code VARCHAR(50),
                 months_count INT,
                 missing_months VARCHAR(100)
@@ -190,7 +190,7 @@ BEGIN
             -- Analisar completude
             INSERT INTO #completeness_check
             SELECT 
-                cod_assessor,
+                crm_id,
                 indicator_code,
                 12 - COUNT(DISTINCT missing_month) as months_count,
                 STRING_AGG(
@@ -199,11 +199,11 @@ BEGIN
             FROM (
                 -- Gerar todos os meses esperados vs existentes
                 SELECT 
-                    a.cod_assessor,
+                    a.crm_id,
                     a.indicator_code,
                     m.month_num as missing_month
                 FROM (
-                    SELECT DISTINCT cod_assessor, indicator_code
+                    SELECT DISTINCT crm_id, indicator_code
                     FROM bronze.performance_targets
                     WHERE target_year = @target_year
                       AND is_processed = 0
@@ -217,14 +217,14 @@ BEGIN
                 WHERE NOT EXISTS (
                     SELECT 1 
                     FROM bronze.performance_targets t
-                    WHERE t.cod_assessor = a.cod_assessor
+                    WHERE t.crm_id = a.crm_id
                       AND t.indicator_code = a.indicator_code
                       AND t.target_year = @target_year
                       AND MONTH(TRY_CAST(t.period_start AS DATE)) = m.month_num
                       AND t.is_processed = 0
                 )
             ) missing
-            GROUP BY cod_assessor, indicator_code;
+            GROUP BY crm_id, indicator_code;
             
             -- Contar combinações incompletas
             SELECT @incomplete_count = COUNT(*)
@@ -239,12 +239,12 @@ BEGIN
                     PRINT 'AVISO: ' + CAST(@incomplete_count AS VARCHAR(10)) + ' combinações com ano incompleto:';
                     
                     SELECT TOP 10
-                        cod_assessor,
+                        crm_id,
                         indicator_code,
                         CAST(12 - months_count AS VARCHAR(2)) + ' meses faltando: ' + missing_months as detalhe
                     FROM #completeness_check
                     WHERE months_count < 12
-                    ORDER BY months_count, cod_assessor;
+                    ORDER BY months_count, crm_id;
                 END;
                 
                 -- Continuar processamento mas registrar warning
@@ -252,13 +252,13 @@ BEGIN
                 SET processing_notes = ISNULL(processing_notes, '') + 
                     ' | AVISO: Ano incompleto - faltam meses: ' + 
                     (SELECT missing_months FROM #completeness_check c 
-                     WHERE c.cod_assessor = bronze.performance_targets.cod_assessor 
+                     WHERE c.crm_id = bronze.performance_targets.crm_id 
                        AND c.indicator_code = bronze.performance_targets.indicator_code)
                 WHERE target_year = @target_year
                   AND is_processed = 0
                   AND EXISTS (
                       SELECT 1 FROM #completeness_check c
-                      WHERE c.cod_assessor = bronze.performance_targets.cod_assessor
+                      WHERE c.crm_id = bronze.performance_targets.crm_id
                         AND c.indicator_code = bronze.performance_targets.indicator_code
                         AND c.months_count < 12
                   );
@@ -273,7 +273,7 @@ BEGIN
         
         -- Criar tabela temporária com dados transformados
         CREATE TABLE #targets_staging (
-            cod_assessor VARCHAR(20),
+            crm_id VARCHAR(20),
             indicator_id INT,
             period_type VARCHAR(20),
             period_start DATE,
@@ -288,7 +288,7 @@ BEGIN
         -- Transformar e validar dados
         INSERT INTO #targets_staging
         SELECT 
-            UPPER(LTRIM(RTRIM(t.cod_assessor))) as cod_assessor,
+            UPPER(LTRIM(RTRIM(t.crm_id))) as crm_id,
             i.indicator_id,
             'MENSAL' as period_type,
             TRY_CAST(t.period_start AS DATE) as period_start,
@@ -323,7 +323,7 @@ BEGIN
                 
                 -- Mostrar detalhes dos erros
                 SELECT TOP 10
-                    cod_assessor,
+                    crm_id,
                     CASE 
                         WHEN indicator_id IS NULL THEN 'Indicador não encontrado'
                         WHEN period_start IS NULL THEN 'Data inválida'
@@ -361,7 +361,7 @@ BEGIN
         )
         MERGE silver.performance_targets AS target
         USING valid_targets AS source
-            ON target.cod_assessor = source.cod_assessor
+            ON target.crm_id = source.crm_id
            AND target.indicator_id = source.indicator_id
            AND target.period_start = source.period_start
         
@@ -383,13 +383,13 @@ BEGIN
         -- Inserir novos registros
         WHEN NOT MATCHED BY TARGET THEN
             INSERT (
-                cod_assessor, indicator_id, period_type, period_start, period_end,
+                crm_id, indicator_id, period_type, period_start, period_end,
                 target_value, stretch_target, minimum_target,
                 is_active, created_date, created_by,
                 source_system, bronze_load_id
             )
             VALUES (
-                source.cod_assessor, source.indicator_id, source.period_type,
+                source.crm_id, source.indicator_id, source.period_type,
                 source.period_start, source.period_end,
                 source.target_value, source.stretch_target, source.minimum_target,
                 1, GETDATE(), SUSER_SNAME(),
@@ -436,7 +436,7 @@ BEGIN
             SELECT 
                 i.indicator_code,
                 i.indicator_name,
-                COUNT(DISTINCT t.cod_assessor) as assessores,
+                COUNT(DISTINCT t.crm_id) as assessores,
                 COUNT(*) as total_metas,
                 AVG(t.target_value) as avg_target,
                 SUM(t.target_value) as total_target
@@ -508,7 +508,7 @@ GO
 SELECT 
     target_year,
     COUNT(*) as pending_records,
-    COUNT(DISTINCT cod_assessor) as unique_assessors,
+    COUNT(DISTINCT crm_id) as unique_assessors,
     COUNT(DISTINCT indicator_code) as unique_indicators
 FROM bronze.performance_targets
 WHERE is_processed = 0

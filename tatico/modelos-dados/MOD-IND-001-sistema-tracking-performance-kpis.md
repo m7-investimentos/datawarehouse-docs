@@ -73,7 +73,7 @@ CAMADA SILVER (Configuração)
 ├─────────────────────────┤      │
 │ PK: assignment_id      │      │
 │ FK: indicator_id       │──────┘
-│ FK: cod_assessor       │
+│ FK: crm_id             │
 │ indicator_weight       │◄─── Soma = 100% para CARD
 │ indicator_type         │
 │ valid_from            │
@@ -86,7 +86,7 @@ CAMADA SILVER (Configuração)
 ├─────────────────────────┤
 │ PK: target_id          │
 │ FK: indicator_id       │
-│ FK: cod_assessor       │
+│ FK: crm_id             │
 │ period_type            │
 │ period_start           │
 │ period_end             │
@@ -102,7 +102,7 @@ CAMADA PLATINUM (Resultados)
 │ performance_tracking    │     │ performance_score_summary│
 ├─────────────────────────┤     ├──────────────────────────┤
 │ PK: tracking_id        │     │ PK: summary_id           │
-│ FK: cod_assessor       │◄────┤ FK: cod_assessor         │
+│ FK: crm_id             │◄────┤ FK: crm_id               │
 │ FK: indicator_id       │     │ period_start             │
 │ period_start           │     │ period_end               │
 │ attribute_name         │     │ card_score               │
@@ -175,7 +175,7 @@ CHECK (unit IN ('R$', '%', 'QTD', 'SCORE', 'HORAS', 'DIAS', 'RATIO'));
 |-------|------|------------|-----------|---------|-------------------|
 | assignment_id | INT | PK, IDENTITY | ID único da atribuição | 1 | Auto-incremento |
 | indicator_id | INT | FK, NOT NULL | Referência ao indicador | 1 | FK para indicators |
-| cod_assessor | VARCHAR(20) | FK, NOT NULL | Código do assessor | "AAI001" | Padrão AAI + números |
+| crm_id | VARCHAR(20) | FK, NOT NULL | ID do CRM do assessor | "AAI001" | Padrão AAI + números |
 | indicator_weight | DECIMAL(5,2) | NOT NULL | Peso do indicador | 25.00 | 0-100, soma=100 para CARD |
 | indicator_type | VARCHAR(20) | NOT NULL | Tipo de indicador | "CARD" | CARD, GATILHO, KPI, PPI, METRICA |
 | valid_from | DATE | NOT NULL | Início da vigência | 2024-01-01 | Não pode ser futuro |
@@ -190,15 +190,15 @@ CHECK (unit IN ('R$', '%', 'QTD', 'SCORE', 'HORAS', 'DIAS', 'RATIO'));
 | Nome | Tipo | Campos | Propósito |
 |------|------|--------|-----------|
 | PK_assignments | CLUSTERED | assignment_id | Chave primária |
-| IX_assignments_assessor | NONCLUSTERED | cod_assessor, valid_from | Busca por assessor |
-| IX_assignments_current | FILTERED | cod_assessor, indicator_id | WHERE valid_to IS NULL |
+| IX_assignments_assessor | NONCLUSTERED | crm_id, valid_from | Busca por assessor |
+| IX_assignments_current | FILTERED | crm_id, indicator_id | WHERE valid_to IS NULL |
 
 **Constraints adicionais**:
 ```sql
 -- Garantir unicidade de indicador por assessor no período
 ALTER TABLE silver.performance_assignments
 ADD CONSTRAINT UK_assignment_unique 
-UNIQUE (cod_assessor, indicator_id, valid_from);
+UNIQUE (crm_id, indicator_id, valid_from);
 
 -- Validar tipo de indicador
 ALTER TABLE silver.performance_assignments
@@ -213,11 +213,11 @@ AS
 BEGIN
     -- Validar que soma dos pesos CARD = 100%
     IF EXISTS (
-        SELECT cod_assessor, valid_from, SUM(indicator_weight) as total_weight
+        SELECT crm_id, valid_from, SUM(indicator_weight) as total_weight
         FROM silver.performance_assignments
         WHERE indicator_type = 'CARD' 
           AND valid_to IS NULL
-        GROUP BY cod_assessor, valid_from
+        GROUP BY crm_id, valid_from
         HAVING ABS(SUM(indicator_weight) - 100.0) > 0.01
     )
     BEGIN
@@ -235,7 +235,7 @@ END;
 |-------|------|------------|-----------|---------|-------------------|
 | target_id | INT | PK, IDENTITY | ID único da meta | 1 | Auto-incremento |
 | indicator_id | INT | FK, NOT NULL | Referência ao indicador | 1 | FK para indicators |
-| cod_assessor | VARCHAR(20) | FK, NOT NULL | Código do assessor | "AAI001" | Padrão AAI + números |
+| crm_id | VARCHAR(20) | FK, NOT NULL | ID do CRM do assessor | "AAI001" | Padrão AAI + números |
 | period_type | VARCHAR(20) | NOT NULL | Tipo de período | "MENSAL" | Sempre MENSAL por ora |
 | period_start | DATE | NOT NULL | Início do período | 2024-01-01 | Primeiro dia do mês |
 | period_end | DATE | NOT NULL | Fim do período | 2024-01-31 | Último dia do mês |
@@ -251,8 +251,8 @@ END;
 | Nome | Tipo | Campos | Propósito |
 |------|------|--------|-----------|
 | PK_targets | CLUSTERED | target_id | Chave primária |
-| UK_target_unique | UNIQUE | cod_assessor, indicator_id, period_start | Evitar duplicatas |
-| IX_targets_period | NONCLUSTERED | period_start, cod_assessor | Queries por período |
+| UK_target_unique | UNIQUE | crm_id, indicator_id, period_start | Evitar duplicatas |
+| IX_targets_period | NONCLUSTERED | period_start, crm_id | Queries por período |
 
 ### 4.4 Tabela: platinum.performance_tracking
 
@@ -261,7 +261,7 @@ END;
 | Campo | Tipo | Constraint | Descrição | Exemplo | Regras de Negócio |
 |-------|------|------------|-----------|---------|-------------------|
 | tracking_id | BIGINT | PK, IDENTITY | ID único do registro | 1 | Auto-incremento |
-| cod_assessor | VARCHAR(20) | FK, NOT NULL | Código do assessor | "AAI001" | Entity do EAV |
+| crm_id | VARCHAR(20) | FK, NOT NULL | ID do CRM do assessor | "AAI001" | Entity do EAV |
 | indicator_id | INT | FK, NOT NULL | Referência ao indicador | 1 | Define o contexto |
 | period_start | DATE | NOT NULL | Início do período | 2024-01-01 | Para agrupamento |
 | period_end | DATE | NOT NULL | Fim do período | 2024-01-31 | Para agrupamento |
@@ -277,8 +277,8 @@ END;
 | Nome | Tipo | Campos | Propósito |
 |------|------|--------|-----------|
 | PK_tracking | CLUSTERED | tracking_id | Chave primária |
-| IX_tracking_current | FILTERED | cod_assessor, period_start, indicator_id | WHERE is_current = 1 |
-| IX_tracking_lookup | NONCLUSTERED | cod_assessor, indicator_id, period_start, attribute_name | Busca específica |
+| IX_tracking_current | FILTERED | crm_id, period_start, indicator_id | WHERE is_current = 1 |
+| IX_tracking_lookup | NONCLUSTERED | crm_id, indicator_id, period_start, attribute_name | Busca específica |
 
 **Atributos típicos no EAV**:
 | attribute_name | Descrição | Tipo esperado |
@@ -301,7 +301,7 @@ END;
 | Campo | Tipo | Constraint | Descrição | Exemplo | Regras de Negócio |
 |-------|------|------------|-----------|---------|-------------------|
 | summary_id | INT | PK, IDENTITY | ID único do resumo | 1 | Auto-incremento |
-| cod_assessor | VARCHAR(20) | FK, NOT NULL | Código do assessor | "AAI001" | Chave do resumo |
+| crm_id | VARCHAR(20) | FK, NOT NULL | ID do CRM do assessor | "AAI001" | Chave do resumo |
 | period_start | DATE | NOT NULL | Início do período | 2024-01-01 | Primeiro dia do mês |
 | period_end | DATE | NOT NULL | Fim do período | 2024-01-31 | Último dia do mês |
 | card_score | DECIMAL(5,2) | NOT NULL | Score ponderado CARD | 85.50 | 0-100 |
@@ -322,7 +322,7 @@ END;
 | Nome | Tipo | Campos | Propósito |
 |------|------|--------|-----------|
 | PK_summary | CLUSTERED | summary_id | Chave primária |
-| UK_summary_unique | UNIQUE | cod_assessor, period_start | Um por assessor/mês |
+| UK_summary_unique | UNIQUE | crm_id, period_start | Um por assessor/mês |
 | IX_summary_period | NONCLUSTERED | period_start, performance_status | Análises mensais |
 | IX_summary_ranking | NONCLUSTERED | period_start, final_score DESC | Para rankings |
 
@@ -359,8 +359,8 @@ CHECK (card_score BETWEEN 0 AND 100
 - **Indicator → Assignment**: 1:N (Um indicador pode estar em várias atribuições)
 - **Indicator → Target**: 1:N (Um indicador tem várias metas mensais)
 - **Indicator → Tracking**: 1:N (Um indicador gera vários resultados)
-- **Assessor → Assignment**: N:N através de Assignment (via períodos)
-- **Assessor → Summary**: 1:N (Um resumo por mês)
+- **CRM (Assessor) → Assignment**: N:N através de Assignment (via períodos)
+- **CRM (Assessor) → Summary**: 1:N (Um resumo por mês)
 
 ## 6. Regras de Negócio e Validações
 
@@ -424,7 +424,7 @@ END;
 -- View para histórico de mudanças de peso
 CREATE VIEW silver.vw_assignment_history AS
 SELECT 
-    a.cod_assessor,
+    a.crm_id,
     a.indicator_id,
     i.indicator_code,
     a.indicator_weight,
@@ -435,7 +435,7 @@ SELECT
     a.created_date
 FROM silver.performance_assignments a
 JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
-ORDER BY a.cod_assessor, a.indicator_id, a.valid_from;
+ORDER BY a.crm_id, a.indicator_id, a.valid_from;
 ```
 
 ## 8. Performance e Otimização
@@ -471,7 +471,7 @@ ON ps_tracking_monthly(period_start);
 ### 9.1 Classificação de Dados
 | Campo | Classificação | Tratamento |
 |-------|---------------|------------|
-| cod_assessor | PII - Confidencial | Acesso controlado |
+| crm_id | PII - Confidencial | Acesso controlado |
 | valores de meta | Confidencial | Não expor publicamente |
 | scores/rankings | Restrito | Apenas gestão e próprio |
 | fórmulas | Interno | Proteger lógica de negócio |
@@ -482,21 +482,21 @@ ON ps_tracking_monthly(period_start);
 CREATE SCHEMA security;
 GO
 
-CREATE FUNCTION security.fn_performance_filter(@cod_assessor VARCHAR(20))
+CREATE FUNCTION security.fn_performance_filter(@crm_id VARCHAR(20))
 RETURNS TABLE
 WITH SCHEMABINDING
 AS
 RETURN SELECT 1 AS access_granted
-WHERE @cod_assessor = USER_NAME() -- Mapear com AD
+WHERE @crm_id = USER_NAME() -- Mapear com AD
    OR IS_ROLEMEMBER('PerformanceAdmin') = 1
    OR IS_ROLEMEMBER('RH_Manager') = 1;
 GO
 
 -- Aplicar às tabelas
 CREATE SECURITY POLICY performance_policy
-ADD FILTER PREDICATE security.fn_performance_filter(cod_assessor)
+ADD FILTER PREDICATE security.fn_performance_filter(crm_id)
 ON platinum.performance_tracking,
-ADD FILTER PREDICATE security.fn_performance_filter(cod_assessor)
+ADD FILTER PREDICATE security.fn_performance_filter(crm_id)
 ON platinum.performance_score_summary
 WITH (STATE = ON);
 ```
@@ -555,7 +555,7 @@ WITH (STATE = ON);
 -- Score completo com detalhamento
 WITH score_detail AS (
     SELECT 
-        pt.cod_assessor,
+        pt.crm_id,
         pi.indicator_code,
         pi.indicator_name,
         pa.indicator_type,
@@ -571,16 +571,16 @@ WITH score_detail AS (
     FROM platinum.performance_tracking pt
     JOIN silver.performance_indicators pi ON pt.indicator_id = pi.indicator_id
     JOIN silver.performance_assignments pa ON pt.indicator_id = pa.indicator_id 
-        AND pt.cod_assessor = pa.cod_assessor
+        AND pt.crm_id = pa.crm_id
         AND pa.valid_to IS NULL
-    WHERE pt.cod_assessor = 'AAI001'
+    WHERE pt.crm_id = 'AAI001'
       AND pt.period_start = '2024-01-01'
       AND pt.is_current = 1
-    GROUP BY pt.cod_assessor, pi.indicator_code, pi.indicator_name, 
+    GROUP BY pt.crm_id, pi.indicator_code, pi.indicator_name, 
              pa.indicator_type, pa.indicator_weight
 )
 SELECT 
-    cod_assessor,
+    crm_id,
     indicator_type,
     COUNT(*) as qtd_indicadores,
     SUM(CASE WHEN indicator_type = 'CARD' 
@@ -595,7 +595,7 @@ SELECT
         '; '
     ) as detalhamento
 FROM score_detail
-GROUP BY cod_assessor, indicator_type
+GROUP BY crm_id, indicator_type
 ORDER BY indicator_type;
 ```
 
@@ -604,7 +604,7 @@ ORDER BY indicator_type;
 CREATE PROCEDURE platinum.prc_calculate_monthly_performance
     @year INT,
     @month INT,
-    @cod_assessor VARCHAR(20) = NULL -- NULL = todos
+    @crm_id VARCHAR(20) = NULL -- NULL = todos
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -616,16 +616,16 @@ BEGIN
     UPDATE platinum.performance_tracking
     SET is_current = 0
     WHERE period_start = @period_start
-      AND (@cod_assessor IS NULL OR cod_assessor = @cod_assessor);
+      AND (@crm_id IS NULL OR crm_id = @crm_id);
     
     -- 2. Calcular cada indicador
     INSERT INTO platinum.performance_tracking (
-        cod_assessor, indicator_id, period_start, period_end,
+        crm_id, indicator_id, period_start, period_end,
         attribute_name, attribute_value, attribute_type,
         calculation_date, data_source
     )
     SELECT 
-        a.cod_assessor,
+        a.crm_id,
         a.indicator_id,
         @period_start,
         @period_end,
@@ -636,19 +636,19 @@ BEGIN
         'prc_calculate_monthly_performance'
     FROM silver.performance_assignments a
     CROSS APPLY platinum.fn_calculate_indicator(
-        a.cod_assessor, 
+        a.crm_id, 
         a.indicator_id, 
         @period_start, 
         @period_end
     ) calc
     WHERE a.valid_from <= @period_start
       AND (a.valid_to IS NULL OR a.valid_to >= @period_end)
-      AND (@cod_assessor IS NULL OR a.cod_assessor = @cod_assessor);
+      AND (@crm_id IS NULL OR a.crm_id = @crm_id);
     
     -- 3. Consolidar scores
     EXEC platinum.prc_consolidate_monthly_scores 
         @period_start = @period_start,
-        @cod_assessor = @cod_assessor;
+        @crm_id = @crm_id;
     
     -- 4. Calcular rankings
     EXEC platinum.prc_calculate_rankings
@@ -670,7 +670,7 @@ END;
 ```sql
 -- Verificar integridade de pesos
 SELECT 
-    cod_assessor,
+    crm_id,
     valid_from,
     SUM(indicator_weight) as total_weight,
     COUNT(*) as qtd_indicators,
@@ -679,24 +679,24 @@ FROM silver.performance_assignments a
 JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
 WHERE a.indicator_type = 'CARD'
   AND a.valid_to IS NULL
-GROUP BY cod_assessor, valid_from
+GROUP BY crm_id, valid_from
 HAVING ABS(SUM(indicator_weight) - 100.0) > 0.01;
 
 -- Identificar cálculos pendentes
 SELECT 
-    a.cod_assessor,
+    a.crm_id,
     COUNT(DISTINCT i.indicator_id) as indicators_assigned,
     COUNT(DISTINCT t.indicator_id) as indicators_calculated,
     COUNT(DISTINCT i.indicator_id) - COUNT(DISTINCT t.indicator_id) as pending
 FROM silver.performance_assignments a
 JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
 LEFT JOIN platinum.performance_tracking t 
-    ON a.cod_assessor = t.cod_assessor 
+    ON a.crm_id = t.crm_id 
     AND a.indicator_id = t.indicator_id
     AND t.period_start = '2024-01-01'
     AND t.is_current = 1
 WHERE a.valid_to IS NULL
-GROUP BY a.cod_assessor
+GROUP BY a.crm_id
 HAVING COUNT(DISTINCT i.indicator_id) > COUNT(DISTINCT t.indicator_id);
 ```
 

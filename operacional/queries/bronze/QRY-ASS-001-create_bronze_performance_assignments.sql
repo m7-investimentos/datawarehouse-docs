@@ -104,7 +104,7 @@ CREATE TABLE [bronze].[performance_assignments](
     [load_source] [varchar](100) NOT NULL,
     
     -- Dados da atribuição (todos VARCHAR para preservar formato original)
-    [cod_assessor] [varchar](20) NOT NULL,
+    [crm_id] [varchar](20) NOT NULL,
     [nome_assessor] [varchar](200) NULL,
     [indicator_code] [varchar](50) NOT NULL,
     [weight] [varchar](20) NULL,
@@ -141,14 +141,14 @@ GO
 
 -- Índice para busca por assessor
 CREATE NONCLUSTERED INDEX [IX_bronze_assignments_assessor]
-ON [bronze].[performance_assignments] ([cod_assessor])
+ON [bronze].[performance_assignments] ([crm_id])
 INCLUDE ([indicator_code], [weight], [is_processed]);
 GO
 
 -- Índice para busca por indicador
 CREATE NONCLUSTERED INDEX [IX_bronze_assignments_indicator]
 ON [bronze].[performance_assignments] ([indicator_code])
-INCLUDE ([cod_assessor], [weight]);
+INCLUDE ([crm_id], [weight]);
 GO
 
 -- Índice para processamento ETL
@@ -197,10 +197,10 @@ GO
 -- Dados da atribuição
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
-    @value=N'Código do assessor/AAI', 
+    @value=N'ID do CRM do assessor', 
     @level0type=N'SCHEMA',@level0name=N'bronze', 
     @level1type=N'TABLE',@level1name=N'performance_assignments', 
-    @level2type=N'COLUMN',@level2name=N'cod_assessor';
+    @level2type=N'COLUMN',@level2name=N'crm_id';
 GO
 
 EXEC sys.sp_addextendedproperty 
@@ -355,7 +355,7 @@ Notas importantes:
 - Hash de linha usado para detectar mudanças nas atribuições
 
 Troubleshooting comum:
-1. Erro de duplicação: Verificar combinação assessor/indicador duplicada
+1. Erro de duplicação: Verificar combinação crm_id/indicador duplicada
 2. Validação de pesos: Soma deve ser 100% para indicadores tipo CARD
 3. Performance: Criar estatísticas nos índices após grandes cargas
 

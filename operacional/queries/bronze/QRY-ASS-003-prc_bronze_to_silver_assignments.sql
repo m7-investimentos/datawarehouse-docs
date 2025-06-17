@@ -159,7 +159,7 @@ BEGIN
             DROP TABLE #assignments_staging;
         
         CREATE TABLE #assignments_staging (
-            cod_assessor VARCHAR(20),
+            crm_id VARCHAR(20),
             indicator_id INT,
             indicator_code VARCHAR(100),
             indicator_type VARCHAR(50),
@@ -179,7 +179,7 @@ BEGIN
         -- Transformar e validar dados
         INSERT INTO #assignments_staging
         SELECT 
-            UPPER(LTRIM(RTRIM(b.cod_assessor))) as cod_assessor,
+            UPPER(LTRIM(RTRIM(b.crm_id))) as crm_id,
             i.indicator_id,
             UPPER(LTRIM(RTRIM(b.indicator_code))) as indicator_code,
             UPPER(LTRIM(RTRIM(b.indicator_type))) as indicator_type,
@@ -229,7 +229,7 @@ BEGIN
             -- Validar soma de pesos CARD por assessor/período
             WITH weight_validation AS (
                 SELECT 
-                    cod_assessor,
+                    crm_id,
                     valid_from,
                     SUM(indicator_weight) as total_weight,
                     COUNT(*) as card_count
@@ -237,7 +237,7 @@ BEGIN
                 WHERE indicator_type = 'CARD'
                   AND indicator_exists = 1
                   AND (valid_to IS NULL OR valid_to > GETDATE())
-                GROUP BY cod_assessor, valid_from
+                GROUP BY crm_id, valid_from
             )
             UPDATE s
             SET s.weight_sum_valid = CASE 
@@ -246,12 +246,12 @@ BEGIN
             END
             FROM #assignments_staging s
             INNER JOIN weight_validation v 
-                ON s.cod_assessor = v.cod_assessor 
+                ON s.crm_id = v.crm_id 
                 AND s.valid_from = v.valid_from
             WHERE s.indicator_type = 'CARD';
             
             -- Contar erros de validação
-            SELECT @rows_error = COUNT(DISTINCT cod_assessor + CAST(valid_from AS VARCHAR))
+            SELECT @rows_error = COUNT(DISTINCT crm_id + CAST(valid_from AS VARCHAR))
             FROM #assignments_staging
             WHERE weight_sum_valid = 0
               AND indicator_type = 'CARD';
@@ -260,14 +260,14 @@ BEGIN
             BEGIN
                 PRINT FORMATMESSAGE('AVISO: %d assessores com soma de pesos inválida:', @rows_error);
                 SELECT DISTINCT 
-                    cod_assessor,
+                    crm_id,
                     valid_from,
                     SUM(indicator_weight) as soma_atual,
                     100.00 as soma_esperada
                 FROM #assignments_staging
                 WHERE indicator_type = 'CARD'
                   AND weight_sum_valid = 0
-                GROUP BY cod_assessor, valid_from;
+                GROUP BY crm_id, valid_from;
             END
         END
         
@@ -284,11 +284,11 @@ BEGIN
             m.is_active = 0
         FROM silver.performance_assignments m
         INNER JOIN (
-            SELECT DISTINCT cod_assessor, MIN(valid_from) as new_valid_from
+            SELECT DISTINCT crm_id, MIN(valid_from) as new_valid_from
             FROM #assignments_staging
             WHERE indicator_exists = 1
-            GROUP BY cod_assessor
-        ) s ON m.cod_assessor = s.cod_assessor
+            GROUP BY crm_id
+        ) s ON m.crm_id = s.crm_id
         WHERE m.valid_to IS NULL
           AND m.valid_from < s.new_valid_from;
         
@@ -296,7 +296,7 @@ BEGIN
         
         -- Inserir novas atribuições
         INSERT INTO silver.performance_assignments (
-            cod_assessor,
+            crm_id,
             indicator_id,
             indicator_weight,
             valid_from,
@@ -310,7 +310,7 @@ BEGIN
             bronze_load_id
         )
         SELECT 
-            s.cod_assessor,
+            s.crm_id,
             s.indicator_id,
             s.indicator_weight,
             s.valid_from,
@@ -327,7 +327,7 @@ BEGIN
           AND NOT EXISTS (
               SELECT 1 
               FROM silver.performance_assignments m
-              WHERE m.cod_assessor = s.cod_assessor
+              WHERE m.crm_id = s.crm_id
                 AND m.indicator_id = s.indicator_id
                 AND m.valid_from = s.valid_from
           );
@@ -497,7 +497,7 @@ EXEC bronze.prc_bronze_to_silver_assignments
 
 -- Verificar resultados
 SELECT * FROM silver.vw_performance_assignments_current
-ORDER BY cod_assessor, indicator_type;
+ORDER BY crm_id, indicator_type;
 */
 
 -- ==============================================================================

@@ -268,7 +268,7 @@ class PerformanceAssignmentsETL:
             empty_row_count = 0
             
             for row_idx, row in enumerate(data):
-                # Verificar se a linha está completamente vazia ou se cod_assessor está vazio
+                # Verificar se a linha está completamente vazia ou se crm_id está vazio
                 if not row or (row and not row[0].strip()):
                     empty_row_count += 1
                     # Se encontrar 5 linhas vazias consecutivas, parar
@@ -310,8 +310,8 @@ class PerformanceAssignmentsETL:
         Returns:
             DataFrame padronizado
         """
-        # Padronizar cod_assessor
-        df['cod_assessor'] = df['cod_assessor'].str.upper().str.strip()
+        # Padronizar crm_id
+        df['crm_id'] = df['crm_id'].str.upper().str.strip()
         
         # Padronizar indicator_code
         df['indicator_code'] = df['indicator_code'].str.upper().str.replace(' ', '_').str.strip()
@@ -354,7 +354,7 @@ class PerformanceAssignmentsETL:
             return validation_errors
         
         # Agrupar por assessor e valid_from
-        weight_sums = card_df.groupby(['cod_assessor', 'valid_from'])['weight'].sum()
+        weight_sums = card_df.groupby(['crm_id', 'valid_from'])['weight'].sum()
         
         # Verificar somas diferentes de 100
         invalid_weights = weight_sums[abs(weight_sums - 100.0) > MAX_WEIGHT_DEVIATION]
@@ -362,7 +362,7 @@ class PerformanceAssignmentsETL:
         for (assessor, valid_from), total_weight in invalid_weights.items():
             validation_errors.append({
                 'error_type': 'INVALID_WEIGHT_SUM',
-                'cod_assessor': assessor,
+                'crm_id': assessor,
                 'valid_from': valid_from,
                 'total_weight': float(total_weight),
                 'expected': 100.0,
@@ -397,7 +397,7 @@ class PerformanceAssignmentsETL:
         for _, row in invalid_codes.iterrows():
             validation_errors.append({
                 'error_type': 'INVALID_INDICATOR_CODE',
-                'cod_assessor': row['cod_assessor'],
+                'crm_id': row['crm_id'],
                 'indicator_code': row['indicator_code'],
                 'message': 'Código não existe em performance_indicators'
             })
@@ -415,7 +415,7 @@ class PerformanceAssignmentsETL:
         self.validation_errors = []
         
         # Validar campos obrigatórios
-        required_fields = ['cod_assessor', 'indicator_code', 'indicator_type']
+        required_fields = ['crm_id', 'indicator_code', 'indicator_type']
         for field in required_fields:
             if field not in self.data.columns:
                 self.validation_errors.append({
@@ -501,7 +501,7 @@ class PerformanceAssignmentsETL:
         df['row_number'] = range(2, len(df) + 2)  # Número da linha na planilha
         
         # Calcular hash para cada linha
-        hash_columns = ['cod_assessor', 'indicator_code', 'valid_from']
+        hash_columns = ['crm_id', 'indicator_code', 'valid_from']
         df['row_hash'] = df[hash_columns].apply(
             lambda x: hashlib.md5('_'.join(str(x[col]) for col in hash_columns).encode()).hexdigest(),
             axis=1
@@ -517,13 +517,13 @@ class PerformanceAssignmentsETL:
         # Marcar registros com erro de peso
         for error in self.validation_errors:
             if error['error_type'] == 'INVALID_WEIGHT_SUM':
-                mask = (df['cod_assessor'] == error['cod_assessor']) & \
+                mask = (df['crm_id'] == error['crm_id']) & \
                        (df['valid_from'] == error['valid_from']) & \
                        (df['indicator_type'] == 'CARD')
                 df.loc[mask, 'weight_sum_valid'] = 0
                 
             elif error['error_type'] == 'INVALID_INDICATOR_CODE':
-                mask = (df['cod_assessor'] == error['cod_assessor']) & \
+                mask = (df['crm_id'] == error['crm_id']) & \
                        (df['indicator_code'] == error['indicator_code'])
                 df.loc[mask, 'indicator_exists'] = 0
         
@@ -576,7 +576,7 @@ class PerformanceAssignmentsETL:
                     # Criar dicionário de erros por chave única
                     error_dict = {}
                     for error in self.validation_errors:
-                        key = f"{error.get('cod_assessor', '')}_{error.get('indicator_code', '')}_{error.get('valid_from', '')}"
+                        key = f"{error.get('crm_id', '')}_{error.get('indicator_code', '')}_{error.get('valid_from', '')}"
                         if key not in error_dict:
                             error_dict[key] = []
                         error_dict[key].append(error)
@@ -584,15 +584,15 @@ class PerformanceAssignmentsETL:
                     # Aplicar erros às linhas correspondentes
                     load_data['validation_errors'] = load_data.apply(
                         lambda x: json.dumps(
-                            error_dict.get(f"{x['cod_assessor']}_{x['indicator_code']}_{x['valid_from']}", [])
-                        ) if f"{x['cod_assessor']}_{x['indicator_code']}_{x['valid_from']}" in error_dict else None,
+                            error_dict.get(f"{x['crm_id']}_{x['indicator_code']}_{x['valid_from']}", [])
+                        ) if f"{x['crm_id']}_{x['indicator_code']}_{x['valid_from']}" in error_dict else None,
                         axis=1
                     )
                 else:
                     load_data['validation_errors'] = None
                 
                 # Converter tudo para string para Bronze
-                string_columns = ['cod_assessor', 'nome_assessor', 'indicator_code', 
+                string_columns = ['crm_id', 'nome_assessor', 'indicator_code', 
                                 'indicator_type', 'weight', 'valid_from', 'valid_to',
                                 'created_by', 'approved_by', 'comments']
                 
@@ -604,7 +604,7 @@ class PerformanceAssignmentsETL:
                 # A ordem deve corresponder exatamente às colunas da tabela (exceto load_id)
                 columns_order = [
                     'load_timestamp', 'load_source',
-                    'cod_assessor', 'nome_assessor', 'indicator_code', 'indicator_type',
+                    'crm_id', 'nome_assessor', 'indicator_code', 'indicator_type',
                     'weight', 'valid_from', 'valid_to', 'created_by', 'approved_by', 'comments',
                     'row_number', 'row_hash', 'is_current', 'is_processed',
                     'processing_date', 'processing_status', 'processing_notes',
@@ -719,7 +719,7 @@ class PerformanceAssignmentsETL:
             with self.db_engine.connect() as conn:
                 # Verificar assessores únicos
                 result = conn.execute(text("""
-                    SELECT COUNT(DISTINCT cod_assessor) as assessores_unicos
+                    SELECT COUNT(DISTINCT crm_id) as assessores_unicos
                     FROM bronze.performance_assignments
                     WHERE load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_assignments)
                 """)).fetchone()
@@ -730,7 +730,7 @@ class PerformanceAssignmentsETL:
                 result = conn.execute(text("""
                     WITH weight_check AS (
                         SELECT 
-                            cod_assessor,
+                            crm_id,
                             valid_from,
                             SUM(CAST(weight AS DECIMAL(5,2))) as total_weight,
                             COUNT(*) as indicator_count
@@ -738,11 +738,11 @@ class PerformanceAssignmentsETL:
                         WHERE indicator_type = 'CARD'
                           AND (valid_to IS NULL OR valid_to = '')
                           AND load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_assignments)
-                        GROUP BY cod_assessor, valid_from
+                        GROUP BY crm_id, valid_from
                     )
                     SELECT 
                         COUNT(*) as assessores_com_erro,
-                        COUNT(DISTINCT cod_assessor) as assessores_afetados
+                        COUNT(DISTINCT crm_id) as assessores_afetados
                     FROM weight_check
                     WHERE ABS(total_weight - 100.0) >= 0.01
                 """)).fetchone()

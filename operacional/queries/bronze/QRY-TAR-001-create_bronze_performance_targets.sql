@@ -51,7 +51,7 @@ Tabela criada: bronze.performance_targets
 
 Colunas principais:
 - load_id: Identificador único do registro
-- cod_assessor: Código do assessor
+- crm_id: Código do assessor
 - indicator_code: Código do indicador
 - period_start/end: Período da meta
 - target_value: Valor da meta
@@ -107,7 +107,7 @@ CREATE TABLE [bronze].[performance_targets](
     [load_source] [varchar](200) NOT NULL DEFAULT ('GoogleSheets:performance_targets'),
     
     -- Campos da planilha (todos VARCHAR(MAX) para Bronze)
-    [cod_assessor] [varchar](max) NULL,
+    [crm_id] [varchar](max) NULL,
     [nome_assessor] [varchar](max) NULL,
     [indicator_code] [varchar](max) NULL,
     [period_type] [varchar](max) NULL,
@@ -162,7 +162,7 @@ INCLUDE ([target_year]);
 GO
 
 -- NOTA: Não é possível criar índices em colunas VARCHAR(MAX)
--- Para queries de busca por assessor/indicador, considerar:
+-- Para queries de busca por crm_id/indicador, considerar:
 -- 1. Usar queries com CAST/CONVERT para tipos menores
 -- 2. Criar view materializada com tipos apropriados
 -- 3. Processar para metadata onde os tipos são otimizados
@@ -199,10 +199,10 @@ GO
 -- Campos de negócio
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
-    @value=N'Código do assessor/AAI', 
+    @value=N'ID do CRM do assessor', 
     @level0type=N'SCHEMA',@level0name=N'bronze', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
-    @level2type=N'COLUMN',@level2name=N'cod_assessor';
+    @level2type=N'COLUMN',@level2name=N'crm_id';
 GO
 
 EXEC sys.sp_addextendedproperty 
@@ -390,7 +390,7 @@ ORDER BY i.name;
 -- Query para verificar volume após carga
 SELECT 
     COUNT(*) as total_records,
-    COUNT(DISTINCT cod_assessor) as unique_assessors,
+    COUNT(DISTINCT crm_id) as unique_assessors,
     COUNT(DISTINCT indicator_code) as unique_indicators,
     MIN(CAST(period_start AS DATE)) as min_date,
     MAX(CAST(period_start AS DATE)) as max_date
