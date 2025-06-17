@@ -76,14 +76,14 @@ Extrair dados de configuração de indicadores de performance da planilha Google
 
 #### Fonte: Google Sheets - m7_performance_indicators
 - **Tipo**: Google Sheets via API
-- **ID da Planilha**: `1WUNRULdlREtaD817VdNM4zToZu8RtRw-kz7-ffHHIWo`
+- **ID da Planilha**: `1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY`
 - **Range**: `'Página1!A:K'` (todas as colunas)
 - **Conexão**: 
   ```python
   # Exemplo de configuração
   SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
   SERVICE_ACCOUNT_FILE = 'path/to/credentials.json'
-  SPREADSHEET_ID = '1WUNRULdlREtaD817VdNM4zToZu8RtRw-kz7-ffHHIWo'
+  SPREADSHEET_ID = '1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY'
   ```
 
 ### 5.2 Estratégia de Extração
