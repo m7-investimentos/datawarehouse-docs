@@ -96,6 +96,15 @@ PROCEDURES = [
             '@validate_weights': 1,
             '@debug': 1
         }
+    },
+    {
+        'name': 'prc_bronze_to_metadata_performance_targets',
+        'schema': 'metadata',
+        'description': 'Processa metas de Bronze para Metadata',
+        'parameters': {
+            '@validate_completeness': 1,
+            '@debug': 1
+        }
     }
 ]
 

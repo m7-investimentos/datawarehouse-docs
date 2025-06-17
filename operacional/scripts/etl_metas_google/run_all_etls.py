@@ -83,6 +83,14 @@ ETL_DEFINITIONS = [
         'config': 'config/etl_002_config.json',
         'critical': True,
         'dependencies': ['001']  # Depende do ETL-001
+    },
+    {
+        'id': '003',
+        'name': 'Performance Targets',
+        'script': 'etl_003_targets.py',
+        'config': 'config/etl_003_config.json',
+        'critical': True,
+        'dependencies': ['001']  # Depende do ETL-001
     }
 ]
 

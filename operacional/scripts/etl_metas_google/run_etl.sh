@@ -24,11 +24,12 @@ show_menu() {
     echo -e "${BLUE}========================================${NC}"
     echo "1) Executar ETL-001 (Indicators)"
     echo "2) Executar ETL-002 (Assignments)"
-    echo "3) Executar todos os ETLs"
-    echo "4) Executar pipeline completo (ETLs + Procedures)"
-    echo "5) Verificar conexão com banco"
-    echo "6) Verificar dados no Bronze"
-    echo "7) Instalar dependências"
+    echo "3) Executar ETL-003 (Targets)"
+    echo "4) Executar todos os ETLs"
+    echo "5) Executar pipeline completo (ETLs + Procedures)"
+    echo "6) Verificar conexão com banco"
+    echo "7) Verificar dados no Bronze"
+    echo "8) Instalar dependências"
     echo "0) Sair"
     echo -e "${BLUE}========================================${NC}"
 }
@@ -87,22 +88,26 @@ while true; do
             $PYTHON etl_002_assignments.py
             ;;
         3)
+            echo -e "\n${YELLOW}Executando ETL-003 (Targets)...${NC}"
+            $PYTHON etl_003_targets.py
+            ;;
+        4)
             echo -e "\n${YELLOW}Executando todos os ETLs...${NC}"
             $PYTHON run_all_etls.py
             ;;
-        4)
+        5)
             echo -e "\n${YELLOW}Executando pipeline completo...${NC}"
             $PYTHON run_full_pipeline.py
             ;;
-        5)
+        6)
             echo -e "\n${YELLOW}Verificando conexão com banco...${NC}"
             $PYTHON tests/test_connection.py
             ;;
-        6)
+        7)
             echo -e "\n${YELLOW}Verificando dados no Bronze...${NC}"
             $PYTHON tests/verify_data.py
             ;;
-        7)
+        8)
             echo -e "\n${YELLOW}Instalando dependências...${NC}"
             $PYTHON -m pip install -r requirements.txt
             ;;

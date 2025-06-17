@@ -1,0 +1,45 @@
+{
+    "etl_name": "ETL-IND-003-performance-targets",
+    "spreadsheet_id": "1nm-z2Fbp7pasHx5gmVbm7JPNBRWp4iRElYCbVfEFpOE",
+    "range_name": "Página1!A:I",
+    "google_credentials_path": "credentials/google_sheets_api.json",
+    "batch_size": 500,
+    "database": {
+        "server": "localhost",
+        "database": "M7Medallion",
+        "user": "sa",
+        "password": "password",
+        "driver": "ODBC Driver 17 for SQL Server"
+    },
+    "validation": {
+        "min_records": 1000,
+        "max_records": 5000,
+        "required_months": 12,
+        "max_growth_percent": 100,
+        "target_value_threshold": {
+            "min": 0,
+            "max": 100000000
+        }
+    },
+    "execution_mode": {
+        "annual_reload_month": 12,
+        "force_annual_reload": false,
+        "incremental_updates": true
+    },
+    "processing": {
+        "batch_size": 500,
+        "clear_existing_annual": true,
+        "validate_completeness": true,
+        "validate_logic": true
+    },
+    "retention": {
+        "bronze_days": 365,
+        "archive_days": 730
+    },
+    "notifications": {
+        "email_on_error": ["bruno.chiaramonti@multisete.com"],
+        "email_on_warning": ["bruno.chiaramonti@multisete.com"],
+        "send_completeness_alerts": true,
+        "send_logic_alerts": true
+    }
+}
