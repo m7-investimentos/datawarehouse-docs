@@ -1,0 +1,28 @@
+{
+    "spreadsheet_id": "1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY",
+    "range_name": "Página1!A:K",
+    "google_credentials_path": "credentials/google_sheets_api.json",
+    "database": {
+        "server": "localhost",
+        "database": "M7Medallion",
+        "user": "sa",
+        "password": "password",
+        "driver": "ODBC Driver 17 for SQL Server"
+    },
+    "validation": {
+        "min_records": 1,
+        "max_records": 100,
+        "required_fields": ["indicator_code", "indicator_name"],
+        "valid_categories": ["FINANCEIRO", "QUALIDADE", "VOLUME", "COMPORTAMENTAL", "PROCESSO", "GATILHO"],
+        "valid_units": ["R$", "%", "QTD", "SCORE", "HORAS", "DIAS", "RATIO"],
+        "valid_aggregations": ["SUM", "AVG", "COUNT", "MAX", "MIN", "LAST", "CUSTOM"]
+    },
+    "retention": {
+        "bronze_days": 30,
+        "archive_days": 90
+    },
+    "notifications": {
+        "email_on_error": ["arquitetura.dados@m7investimentos.com.br"],
+        "email_on_warning": ["gestao.performance@m7investimentos.com.br"]
+    }
+}

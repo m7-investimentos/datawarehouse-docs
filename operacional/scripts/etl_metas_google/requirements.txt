@@ -1,0 +1,26 @@
+# ETL-IND-001 - Performance Indicators ETL
+# Python 3.8+
+
+# Core dependencies
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Google Sheets API
+google-api-python-client>=2.0.0
+google-auth>=2.0.0
+google-auth-oauthlib>=0.5.0
+google-auth-httplib2>=0.1.0
+
+# Database connectivity
+pyodbc>=4.0.0
+sqlalchemy>=1.4.0
+
+# Utilities
+tenacity>=8.0.0  # Para retry logic
+python-dotenv>=0.19.0  # Para variáveis de ambiente
+
+# Development dependencies (opcional)
+pytest>=7.0.0
+black>=22.0.0
+flake8>=4.0.0
+mypy>=0.950

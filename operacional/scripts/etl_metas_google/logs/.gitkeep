@@ -1,0 +1,3 @@
+# Este diretório contém os logs de execução do ETL
+# Os arquivos de log são gerados automaticamente com timestamp
+# Considerar adicionar ao .gitignore: logs/*.log
