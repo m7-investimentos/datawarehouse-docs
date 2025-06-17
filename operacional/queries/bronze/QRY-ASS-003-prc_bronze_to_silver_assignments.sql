@@ -1,15 +1,15 @@
 -- ==============================================================================
--- QRY-ASS-003-prc_bronze_to_metadata_assignments
+-- QRY-ASS-003-prc_bronze_to_silver_assignments
 -- ==============================================================================
 -- Tipo: Stored Procedure
 -- Versão: 1.0.0
 -- Última atualização: 2025-01-17
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
--- Tags: [procedure, etl, bronze, metadata, performance, assignments]
+-- Tags: [procedure, etl, bronze, silver, performance, assignments]
 -- Status: produção
 -- Banco de Dados: SQL Server
--- Schema: metadata
+-- Schema: silver
 -- ==============================================================================
 
 -- ==============================================================================
@@ -18,7 +18,7 @@
 /*
 Descrição: 
     Procedure para processar atribuições de indicadores de performance da camada 
-    Bronze para Metadata, incluindo validações, transformações de tipos e merge 
+    Bronze para Silver, incluindo validações, transformações de tipos e merge 
     com histórico existente.
 
 Casos de uso:
@@ -44,7 +44,7 @@ Parâmetros da procedure:
 @debug                BIT         -- Modo debug com mensagens detalhadas (default: 0)
 
 Exemplo de uso:
-    EXEC metadata.prc_bronze_to_metadata_assignments 
+    EXEC silver.prc_bronze_to_silver_assignments 
         @load_id = NULL,
         @validate_weights = 1,
         @force_update = 0,
@@ -61,7 +61,7 @@ Retorno da procedure:
     - Registros em tabela de log de processamento
 
 Resultados esperados:
-    - Registros inseridos em metadata.performance_assignments
+    - Registros inseridos em silver.performance_assignments
     - Registros atualizados com valid_to para mudanças
     - Flags is_processed = 1 em bronze.performance_assignments
 */
@@ -72,12 +72,12 @@ Resultados esperados:
 /*
 Tabelas/Views utilizadas:
     - bronze.performance_assignments: Fonte dos dados
-    - metadata.performance_indicators: Validação de indicadores
-    - metadata.performance_assignments: Destino dos dados
+    - silver.performance_indicators: Validação de indicadores
+    - silver.performance_assignments: Destino dos dados
     
 Pré-requisitos:
     - Dados devem estar carregados no Bronze
-    - Indicadores devem existir em metadata.performance_indicators
+    - Indicadores devem existir em silver.performance_indicators
     - Usuário deve ter permissões de INSERT/UPDATE/SELECT
 */
 
@@ -92,11 +92,11 @@ GO
 -- ==============================================================================
 
 -- Drop procedure existente se necessário
-IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[metadata].[prc_bronze_to_metadata_assignments]'))
-    DROP PROCEDURE [metadata].[prc_bronze_to_metadata_assignments];
+IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[silver].[prc_bronze_to_silver_assignments]'))
+    DROP PROCEDURE [silver].[prc_bronze_to_silver_assignments];
 GO
 
-CREATE PROCEDURE [metadata].[prc_bronze_to_metadata_assignments]
+CREATE PROCEDURE [silver].[prc_bronze_to_silver_assignments]
     @load_id INT = NULL,
     @validate_weights BIT = 1,
     @force_update BIT = 0,
@@ -116,7 +116,7 @@ BEGIN
     DECLARE @procedure_name NVARCHAR(128) = OBJECT_NAME(@@PROCID);
     
     IF @debug = 1
-        PRINT FORMATMESSAGE('[%s] Iniciando processamento Bronze → Metadata Assignments', CONVERT(VARCHAR, GETDATE(), 120));
+        PRINT FORMATMESSAGE('[%s] Iniciando processamento Bronze → Silver Assignments', CONVERT(VARCHAR, GETDATE(), 120));
     
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -197,7 +197,7 @@ BEGIN
             CASE WHEN i.indicator_id IS NOT NULL THEN 1 ELSE 0 END as indicator_exists,
             b.validation_errors
         FROM bronze.performance_assignments b
-        LEFT JOIN metadata.performance_indicators i 
+        LEFT JOIN silver.performance_indicators i 
             ON UPPER(LTRIM(RTRIM(b.indicator_code))) = i.indicator_code
         WHERE b.load_id = @load_id
           AND b.is_processed = 0;
@@ -271,7 +271,7 @@ BEGIN
         END
         
         -- ==============================================================================
-        -- 10. MERGE COM METADATA
+        -- 10. MERGE COM SILVER
         -- ==============================================================================
         
         -- Encerrar vigências antigas que serão substituídas
@@ -281,7 +281,7 @@ BEGIN
             m.modified_date = GETDATE(),
             m.modified_by = 'ETL_SYSTEM',
             m.is_active = 0
-        FROM metadata.performance_assignments m
+        FROM silver.performance_assignments m
         INNER JOIN (
             SELECT DISTINCT cod_assessor, MIN(valid_from) as new_valid_from
             FROM #assignments_staging
@@ -294,7 +294,7 @@ BEGIN
         SET @rows_updated = @@ROWCOUNT;
         
         -- Inserir novas atribuições
-        INSERT INTO metadata.performance_assignments (
+        INSERT INTO silver.performance_assignments (
             cod_assessor,
             indicator_id,
             indicator_weight,
@@ -325,7 +325,7 @@ BEGIN
         WHERE s.indicator_exists = 1
           AND NOT EXISTS (
               SELECT 1 
-              FROM metadata.performance_assignments m
+              FROM silver.performance_assignments m
               WHERE m.cod_assessor = s.cod_assessor
                 AND m.indicator_id = s.indicator_id
                 AND m.valid_from = s.valid_from
@@ -366,9 +366,9 @@ BEGIN
         -- ==============================================================================
         
         -- Registrar execução (criar tabela de log se não existir)
-        IF OBJECT_ID('metadata.etl_process_log') IS NOT NULL
+        IF OBJECT_ID('silver.etl_process_log') IS NOT NULL
         BEGIN
-            INSERT INTO metadata.etl_process_log (
+            INSERT INTO silver.etl_process_log (
                 process_name,
                 process_type,
                 start_time,
@@ -383,7 +383,7 @@ BEGIN
             )
             VALUES (
                 @procedure_name,
-                'BRONZE_TO_METADATA',
+                'BRONZE_TO_SILVER',
                 @start_time,
                 GETDATE(),
                 DATEDIFF(SECOND, @start_time, GETDATE()),
@@ -430,9 +430,9 @@ BEGIN
           AND is_processed = 0;
         
         -- Registrar erro no log
-        IF OBJECT_ID('metadata.etl_process_log') IS NOT NULL
+        IF OBJECT_ID('silver.etl_process_log') IS NOT NULL
         BEGIN
-            INSERT INTO metadata.etl_process_log (
+            INSERT INTO silver.etl_process_log (
                 process_name,
                 process_type,
                 start_time,
@@ -447,7 +447,7 @@ BEGIN
             )
             VALUES (
                 @procedure_name,
-                'BRONZE_TO_METADATA',
+                'BRONZE_TO_SILVER',
                 @start_time,
                 GETDATE(),
                 DATEDIFF(SECOND, @start_time, GETDATE()),
@@ -472,7 +472,7 @@ GO
 -- ==============================================================================
 
 -- Conceder permissão de execução
--- GRANT EXECUTE ON [metadata].[prc_bronze_to_metadata_assignments] TO [etl_user];
+-- GRANT EXECUTE ON [silver].[prc_bronze_to_silver_assignments] TO [etl_user];
 -- GO
 
 -- ==============================================================================
@@ -481,22 +481,22 @@ GO
 
 /*
 -- Teste 1: Processar última carga
-EXEC metadata.prc_bronze_to_metadata_assignments 
+EXEC silver.prc_bronze_to_silver_assignments 
     @debug = 1;
 
 -- Teste 2: Processar carga específica
-EXEC metadata.prc_bronze_to_metadata_assignments 
+EXEC silver.prc_bronze_to_silver_assignments 
     @load_id = 123,
     @validate_weights = 1,
     @debug = 1;
 
 -- Teste 3: Forçar atualização
-EXEC metadata.prc_bronze_to_metadata_assignments 
+EXEC silver.prc_bronze_to_silver_assignments 
     @force_update = 1,
     @debug = 1;
 
 -- Verificar resultados
-SELECT * FROM metadata.vw_performance_assignments_current
+SELECT * FROM silver.vw_performance_assignments_current
 ORDER BY cod_assessor, indicator_type;
 */
 

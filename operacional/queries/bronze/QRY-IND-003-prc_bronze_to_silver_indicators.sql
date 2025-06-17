@@ -1,12 +1,12 @@
 -- ==============================================================================
--- QRY-IND-003-prc_bronze_to_metadata_indicators
+-- QRY-IND-003-prc_bronze_to_silver_indicators
 -- ==============================================================================
 -- Tipo: Stored Procedure
 -- Versão: 1.0.0
 -- Última atualização: 2025-01-17
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
--- Tags: [bronze, metadata, etl, performance, indicadores, procedure]
+-- Tags: [bronze, silver, etl, performance, indicadores, procedure]
 -- Status: produção
 -- Banco de Dados: SQL Server
 -- Schema: bronze
@@ -16,7 +16,7 @@
 -- 1. OBJETIVO
 -- ==============================================================================
 /*
-Descrição: Processa indicadores de performance da camada Bronze para Metadata,
+Descrição: Processa indicadores de performance da camada Bronze para Silver,
            aplicando validações, transformações e controle de versionamento.
 
 Casos de uso:
@@ -40,7 +40,7 @@ Parâmetros:
 @debug_mode       BIT     -- Se 1, mostra informações de debug (default: 0)
 
 Exemplo de uso:
-EXEC [bronze].[prc_process_indicators_to_metadata] 
+EXEC [bronze].[prc_process_indicators_to_silver] 
     @load_id = NULL,
     @validate_only = 0,
     @debug_mode = 1;
@@ -57,7 +57,7 @@ Resultados retornados:
 
 Tabelas afetadas:
 - bronze.performance_indicators (atualiza is_processed)
-- metadata.performance_indicators (insere/atualiza registros)
+- silver.performance_indicators (insere/atualiza registros)
 - audit.etl_transformations (log de processamento)
 */
 
@@ -67,7 +67,7 @@ Tabelas afetadas:
 /*
 Tabelas/Views utilizadas:
 - bronze.performance_indicators: Fonte dos dados
-- metadata.performance_indicators: Destino dos dados
+- silver.performance_indicators: Destino dos dados
 
 Pré-requisitos:
 - Dados devem estar carregados no Bronze
@@ -81,15 +81,15 @@ USE [M7Medallion];
 GO
 
 -- Drop procedure se existir
-IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[bronze].[prc_process_indicators_to_metadata]'))
-    DROP PROCEDURE [bronze].[prc_process_indicators_to_metadata];
+IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[bronze].[prc_process_indicators_to_silver]'))
+    DROP PROCEDURE [bronze].[prc_process_indicators_to_silver];
 GO
 
 -- ==============================================================================
 -- 6. CRIAÇÃO DA PROCEDURE
 -- ==============================================================================
 
-CREATE PROCEDURE [bronze].[prc_process_indicators_to_metadata]
+CREATE PROCEDURE [bronze].[prc_process_indicators_to_silver]
     @load_id INT = NULL,
     @validate_only BIT = 0,
     @debug_mode BIT = 0
@@ -345,8 +345,8 @@ BEGIN
               AND load_id NOT IN (SELECT row_id FROM #validation_errors WHERE severity = 'ERROR')
         )
         
-        -- MERGE com metadata
-        MERGE metadata.performance_indicators AS target
+        -- MERGE com silver
+        MERGE silver.performance_indicators AS target
         USING transformed_data AS source
         ON target.indicator_code = source.indicator_code
         
@@ -373,7 +373,7 @@ BEGIN
             notes = source.notes,
             version = target.version + 1,
             modified_date = GETDATE(),
-            modified_by = 'ETL_BRONZE_TO_METADATA'
+            modified_by = 'ETL_BRONZE_TO_SILVER'
         
         -- INSERT quando não existe
         WHEN NOT MATCHED BY TARGET THEN INSERT (
@@ -399,7 +399,7 @@ BEGIN
             source.is_active,
             source.description,
             source.notes,
-            'ETL_BRONZE_TO_METADATA'
+            'ETL_BRONZE_TO_SILVER'
         );
         
         -- Capturar contadores
@@ -448,7 +448,7 @@ BEGIN
                 unit,
                 version,
                 modified_date
-            FROM metadata.performance_indicators
+            FROM silver.performance_indicators
             WHERE is_active = 1
             ORDER BY CASE WHEN modified_date >= @start_time THEN 0 ELSE 1 END,
                      indicator_code;
@@ -497,7 +497,7 @@ GO
 -- ==============================================================================
 
 -- Dar permissão de execução para role ETL
-GRANT EXECUTE ON [bronze].[prc_process_indicators_to_metadata] TO [db_etl_executor];
+GRANT EXECUTE ON [bronze].[prc_process_indicators_to_silver] TO [db_etl_executor];
 GO
 
 -- ==============================================================================
@@ -506,9 +506,9 @@ GO
 
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
-    @value=N'Processa indicadores de performance da camada Bronze para Metadata, aplicando validações, transformações e controle de versionamento.',
+    @value=N'Processa indicadores de performance da camada Bronze para Silver, aplicando validações, transformações e controle de versionamento.',
     @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'PROCEDURE', @level1name=N'prc_process_indicators_to_metadata';
+    @level1type=N'PROCEDURE', @level1name=N'prc_process_indicators_to_silver';
 GO
 
 -- ==============================================================================
@@ -538,16 +538,16 @@ Troubleshooting comum:
 
 Exemplo de execução:
 -- Processar última carga
-EXEC bronze.prc_process_indicators_to_metadata;
+EXEC bronze.prc_process_indicators_to_silver;
 
 -- Validar sem processar
-EXEC bronze.prc_process_indicators_to_metadata @validate_only = 1, @debug_mode = 1;
+EXEC bronze.prc_process_indicators_to_silver @validate_only = 1, @debug_mode = 1;
 
 -- Reprocessar carga específica
 UPDATE bronze.performance_indicators SET is_processed = 0 WHERE load_id = 123;
-EXEC bronze.prc_process_indicators_to_metadata @load_id = 123;
+EXEC bronze.prc_process_indicators_to_silver @load_id = 123;
 
 Contato para dúvidas: arquitetura.dados@m7investimentos.com.br
 */
 
-PRINT 'Procedure bronze.prc_process_indicators_to_metadata criada com sucesso!';
+PRINT 'Procedure bronze.prc_process_indicators_to_silver criada com sucesso!';

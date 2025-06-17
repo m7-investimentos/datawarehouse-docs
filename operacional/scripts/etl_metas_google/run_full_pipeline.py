@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-Pipeline Completo - ETLs + Procedures Bronze to Metadata
+Pipeline Completo - ETLs + Procedures Bronze to Silver
 ================================================================================
 Tipo: Script Pipeline
 Versão: 1.0.0
 Última atualização: 2025-01-17
 Autor: bruno.chiaramonti@multisete.com
 Revisor: arquitetura.dados@m7investimentos.com.br
-Tags: [pipeline, etl, procedures, bronze, metadata]
+Tags: [pipeline, etl, procedures, bronze, silver]
 Status: produção
 Python: 3.8+
 ================================================================================
@@ -17,7 +17,7 @@ Python: 3.8+
 OBJETIVO:
     Executar o pipeline completo de performance:
     1. ETLs do Google Sheets para Bronze
-    2. Procedures de Bronze para Metadata
+    2. Procedures de Bronze para Silver
 
 CASOS DE USO:
     1. Execução diária automatizada completa
@@ -81,26 +81,26 @@ DB_CONFIG = {
 # Definição das procedures e ordem de execução
 PROCEDURES = [
     {
-        'name': 'prc_bronze_to_metadata_indicators',
-        'schema': 'metadata',
-        'description': 'Processa indicadores de Bronze para Metadata',
+        'name': 'prc_bronze_to_silver_indicators',
+        'schema': 'silver',
+        'description': 'Processa indicadores de Bronze para Silver',
         'parameters': {
             '@debug': 1
         }
     },
     {
-        'name': 'prc_bronze_to_metadata_assignments',
-        'schema': 'metadata',
-        'description': 'Processa atribuições de Bronze para Metadata',
+        'name': 'prc_bronze_to_silver_assignments',
+        'schema': 'silver',
+        'description': 'Processa atribuições de Bronze para Silver',
         'parameters': {
             '@validate_weights': 1,
             '@debug': 1
         }
     },
     {
-        'name': 'prc_bronze_to_metadata_performance_targets',
-        'schema': 'metadata',
-        'description': 'Processa metas de Bronze para Metadata',
+        'name': 'prc_bronze_to_silver_performance_targets',
+        'schema': 'silver',
+        'description': 'Processa metas de Bronze para Silver',
         'parameters': {
             '@validate_completeness': 1,
             '@debug': 1
@@ -237,7 +237,7 @@ def execute_procedure(conn: pyodbc.Connection, proc_def: Dict,
 
 def run_procedures(logger: logging.Logger, debug: bool = False) -> int:
     """
-    Executa as procedures de Bronze para Metadata.
+    Executa as procedures de Bronze para Silver.
     
     Args:
         logger: Logger configurado

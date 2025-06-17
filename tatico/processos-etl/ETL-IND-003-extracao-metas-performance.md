@@ -7,7 +7,7 @@ versão: 1.0.0
 última_atualização: 2025-01-16
 autor: arquitetura.dados@m7investimentos.com.br
 aprovador: diretoria.ti@m7investimentos.com.br
-tags: [etl, performance, targets, metas, google-sheets, bronze, metadados]
+tags: [etl, performance, targets, metas, google-sheets, bronze, silver]
 status: aprovado
 dependências:
   - tipo: arquitetura
@@ -930,7 +930,7 @@ if __name__ == "__main__":
 }
 ```
 
-### 15.3 Procedure de Processamento Bronze → Metadados
+### 15.3 Procedure de Processamento Bronze → Silver
 ```sql
 CREATE PROCEDURE bronze.prc_process_targets_to_metadata
     @year INT = NULL,
@@ -982,13 +982,13 @@ BEGIN
               AND target_year = @year
               AND TRY_CAST(target_value AS DECIMAL(18,4)) IS NOT NULL
         )
-        -- 3. Merge com metadados
-        MERGE metadados.performance_targets AS target
+        -- 3. Merge com silver
+        MERGE silver.performance_targets AS target
         USING transformed AS source
             ON target.cod_assessor = source.cod_assessor
            AND target.indicator_id = (
                 SELECT indicator_id 
-                FROM metadados.performance_indicators 
+                FROM silver.performance_indicators 
                 WHERE indicator_code = source.indicator_code
                )
            AND target.period_start = source.period_start
@@ -1003,7 +1003,7 @@ BEGIN
                    period_end, target_value, stretch_target, minimum_target, created_date)
             VALUES (
                 source.cod_assessor,
-                (SELECT indicator_id FROM metadados.performance_indicators 
+                (SELECT indicator_id FROM silver.performance_indicators 
                  WHERE indicator_code = source.indicator_code),
                 source.period_type,
                 source.period_start,

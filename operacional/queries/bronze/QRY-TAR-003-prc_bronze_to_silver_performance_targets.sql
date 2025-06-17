@@ -1,22 +1,22 @@
 -- ==============================================================================
--- QRY-TAR-003-prc_bronze_to_metadata_performance_targets
+-- QRY-TAR-003-prc_bronze_to_silver_performance_targets
 -- ==============================================================================
 -- Tipo: Stored Procedure
 -- Versão: 1.0.0
 -- Última atualização: 2025-01-17
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
--- Tags: [procedure, etl, bronze, metadata, performance, targets]
+-- Tags: [procedure, etl, bronze, silver, performance, targets]
 -- Status: produção
 -- Banco de Dados: SQL Server
--- Schema: metadata
+-- Schema: silver
 -- ==============================================================================
 
 -- ==============================================================================
 -- 1. OBJETIVO
 -- ==============================================================================
 /*
-Descrição: Processa dados de metas de performance da camada Bronze para Metadata,
+Descrição: Processa dados de metas de performance da camada Bronze para Silver,
 aplicando validações, conversões de tipos e merge com dados existentes.
 
 Casos de uso:
@@ -42,15 +42,15 @@ Parâmetros necessários para execução:
 
 Exemplo de uso:
 -- Processar ano atual com validação
-EXEC metadata.prc_bronze_to_metadata_performance_targets;
+EXEC silver.prc_bronze_to_silver_performance_targets;
 
 -- Processar ano específico
-EXEC metadata.prc_bronze_to_metadata_performance_targets 
+EXEC silver.prc_bronze_to_silver_performance_targets 
     @target_year = 2025,
     @validate_completeness = 1;
 
 -- Modo debug
-EXEC metadata.prc_bronze_to_metadata_performance_targets 
+EXEC silver.prc_bronze_to_silver_performance_targets 
     @debug_mode = 1;
 */
 
@@ -80,12 +80,12 @@ Saídas da procedure:
 /*
 Tabelas/Views utilizadas:
 - bronze.performance_targets: Fonte dos dados brutos
-- metadata.performance_indicators: Para validar indicator_code
-- metadata.performance_targets: Destino dos dados processados
+- silver.performance_indicators: Para validar indicator_code
+- silver.performance_targets: Destino dos dados processados
 
 Pré-requisitos:
 - Dados carregados na bronze.performance_targets
-- Indicadores cadastrados em metadata.performance_indicators
+- Indicadores cadastrados em silver.performance_indicators
 - Permissões de SELECT/INSERT/UPDATE nas tabelas
 */
 
@@ -101,15 +101,15 @@ SET QUOTED_IDENTIFIER ON;
 GO
 
 -- Dropar procedure se existir
-IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[metadata].[prc_bronze_to_metadata_performance_targets]') AND type in (N'P', N'PC'))
-    DROP PROCEDURE [metadata].[prc_bronze_to_metadata_performance_targets];
+IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[silver].[prc_bronze_to_silver_performance_targets]') AND type in (N'P', N'PC'))
+    DROP PROCEDURE [silver].[prc_bronze_to_silver_performance_targets];
 GO
 
 -- ==============================================================================
 -- 6. CRIAÇÃO DA PROCEDURE
 -- ==============================================================================
 
-CREATE PROCEDURE [metadata].[prc_bronze_to_metadata_performance_targets]
+CREATE PROCEDURE [silver].[prc_bronze_to_silver_performance_targets]
     @target_year INT = NULL,
     @validate_completeness BIT = 1,
     @debug_mode BIT = 0
@@ -136,7 +136,7 @@ BEGIN
     IF @debug_mode = 1
     BEGIN
         PRINT '========================================';
-        PRINT 'Iniciando processamento Bronze → Metadata';
+        PRINT 'Iniciando processamento Bronze → Silver';
         PRINT 'Ano alvo: ' + CAST(@target_year AS VARCHAR(4));
         PRINT 'Validar completude: ' + CASE WHEN @validate_completeness = 1 THEN 'SIM' ELSE 'NÃO' END;
         PRINT 'Timestamp: ' + CONVERT(VARCHAR(23), @start_time, 121);
@@ -296,7 +296,7 @@ BEGIN
                 ELSE 1
             END as is_valid
         FROM bronze.performance_targets t
-        LEFT JOIN metadata.performance_indicators i 
+        LEFT JOIN silver.performance_indicators i 
             ON UPPER(LTRIM(RTRIM(t.indicator_code))) = i.indicator_code
         WHERE t.target_year = @target_year
           AND t.is_processed = 0;
@@ -351,7 +351,7 @@ BEGIN
         WITH valid_targets AS (
             SELECT * FROM #targets_staging WHERE is_valid = 1
         )
-        MERGE metadata.performance_targets AS target
+        MERGE silver.performance_targets AS target
         USING valid_targets AS source
             ON target.cod_assessor = source.cod_assessor
            AND target.indicator_id = source.indicator_id
@@ -432,8 +432,8 @@ BEGIN
                 COUNT(*) as total_metas,
                 AVG(t.target_value) as avg_target,
                 SUM(t.target_value) as total_target
-            FROM metadata.performance_targets t
-            INNER JOIN metadata.performance_indicators i ON t.indicator_id = i.indicator_id
+            FROM silver.performance_targets t
+            INNER JOIN silver.performance_indicators i ON t.indicator_id = i.indicator_id
             WHERE YEAR(t.period_start) = @target_year
             GROUP BY i.indicator_code, i.indicator_name
             ORDER BY i.indicator_code;
@@ -485,7 +485,7 @@ GO
 -- ==============================================================================
 
 -- Conceder permissões de execução
-GRANT EXECUTE ON [metadata].[prc_bronze_to_metadata_performance_targets] TO [etl_user];
+GRANT EXECUTE ON [silver].[prc_bronze_to_silver_performance_targets] TO [etl_user];
 GO
 
 -- ==============================================================================
@@ -549,7 +549,7 @@ Notas importantes:
 - Transação garante atomicidade do processamento
 
 Troubleshooting comum:
-1. "Indicador não encontrado": Cadastrar em metadata.performance_indicators
+1. "Indicador não encontrado": Cadastrar em silver.performance_indicators
 2. "Data inválida": Verificar formato no Google Sheets
 3. "Ano incompleto": Normal em início de ano ou para novos assessores
 4. Timeout: Processar por lotes menores se volume > 5000
@@ -558,5 +558,5 @@ Contato para dúvidas: bruno.chiaramonti@multisete.com
 */
 
 -- Confirmar criação
-PRINT 'Procedure metadata.prc_bronze_to_metadata_performance_targets criada com sucesso!';
+PRINT 'Procedure silver.prc_bronze_to_silver_performance_targets criada com sucesso!';
 GO

@@ -7,7 +7,7 @@ versão: 1.0.0
 última_atualização: 2025-01-16
 autor: arquitetura.dados@m7investimentos.com.br
 aprovador: diretoria.ti@m7investimentos.com.br
-tags: [modelo, performance, tracking, metadados, platinum, medallion]
+tags: [modelo, performance, tracking, silver, platinum, medallion]
 status: aprovado
 dependências:
   - tipo: arquitetura
@@ -42,7 +42,7 @@ Definir o modelo de dados para o sistema de Performance Tracking da M7 Investime
 - **Plataforma**: SQL Server 2019+
 - **Database**: M7Medallion
 - **Schemas**: 
-  - `metadados`: Configurações validadas
+  - `silver`: Configurações validadas
   - `platinum`: Dados processados para consumo
 - **Layer**: Metadados (configuração) + Platinum (resultados)
 
@@ -51,7 +51,7 @@ Definir o modelo de dados para o sistema de Performance Tracking da M7 Investime
 ### 3.1 Diagrama Entidade-Relacionamento
 
 ```
-CAMADA METADADOS (Configuração)
+CAMADA SILVER (Configuração)
 ================================
 
 ┌─────────────────────────┐
@@ -118,15 +118,15 @@ CAMADA PLATINUM (Resultados)
 ### 3.2 Principais Entidades
 | Entidade | Schema | Tipo | Descrição | Volume Estimado |
 |----------|--------|------|-----------|-----------------|
-| performance_indicators | metadados | Configuração | Catálogo de KPIs | ~50 registros |
-| performance_assignments | metadados | Configuração | Atribuição assessor-KPI | ~500 registros |
-| performance_targets | metadados | Configuração | Metas mensais | ~6000 registros/ano |
+| performance_indicators | silver | Configuração | Catálogo de KPIs | ~50 registros |
+| performance_assignments | silver | Configuração | Atribuição assessor-KPI | ~500 registros |
+| performance_targets | silver | Configuração | Metas mensais | ~6000 registros/ano |
 | performance_tracking | platinum | Transacional | Resultados EAV | ~50K registros/mês |
 | performance_score_summary | platinum | Agregado | Scores consolidados | ~420 registros/mês |
 
 ## 4. Dicionário de Dados Detalhado
 
-### 4.1 Tabela: metadados.performance_indicators
+### 4.1 Tabela: silver.performance_indicators
 
 **Descrição**: Catálogo centralizado de todos os indicadores de performance disponíveis no sistema.
 
@@ -157,17 +157,17 @@ CAMADA PLATINUM (Resultados)
 **Constraints adicionais**:
 ```sql
 -- Check constraint para categorias válidas
-ALTER TABLE metadados.performance_indicators 
+ALTER TABLE silver.performance_indicators 
 ADD CONSTRAINT CHK_indicator_category 
 CHECK (category IN ('FINANCEIRO', 'QUALIDADE', 'VOLUME', 'COMPORTAMENTAL', 'PROCESSO', 'GATILHO'));
 
 -- Check constraint para units válidas
-ALTER TABLE metadados.performance_indicators 
+ALTER TABLE silver.performance_indicators 
 ADD CONSTRAINT CHK_indicator_unit 
 CHECK (unit IN ('R$', '%', 'QTD', 'SCORE', 'HORAS', 'DIAS', 'RATIO'));
 ```
 
-### 4.2 Tabela: metadados.performance_assignments
+### 4.2 Tabela: silver.performance_assignments
 
 **Descrição**: Define quais indicadores estão atribuídos a cada assessor, com seus respectivos pesos e períodos de vigência.
 
@@ -196,25 +196,25 @@ CHECK (unit IN ('R$', '%', 'QTD', 'SCORE', 'HORAS', 'DIAS', 'RATIO'));
 **Constraints adicionais**:
 ```sql
 -- Garantir unicidade de indicador por assessor no período
-ALTER TABLE metadados.performance_assignments
+ALTER TABLE silver.performance_assignments
 ADD CONSTRAINT UK_assignment_unique 
 UNIQUE (cod_assessor, indicator_id, valid_from);
 
 -- Validar tipo de indicador
-ALTER TABLE metadados.performance_assignments
+ALTER TABLE silver.performance_assignments
 ADD CONSTRAINT CHK_indicator_type
 CHECK (indicator_type IN ('CARD', 'GATILHO', 'KPI', 'PPI', 'METRICA'));
 
 -- Trigger para validar soma de pesos
 CREATE TRIGGER trg_validate_card_weights
-ON metadados.performance_assignments
+ON silver.performance_assignments
 AFTER INSERT, UPDATE
 AS
 BEGIN
     -- Validar que soma dos pesos CARD = 100%
     IF EXISTS (
         SELECT cod_assessor, valid_from, SUM(indicator_weight) as total_weight
-        FROM metadados.performance_assignments
+        FROM silver.performance_assignments
         WHERE indicator_type = 'CARD' 
           AND valid_to IS NULL
         GROUP BY cod_assessor, valid_from
@@ -227,7 +227,7 @@ BEGIN
 END;
 ```
 
-### 4.3 Tabela: metadados.performance_targets
+### 4.3 Tabela: silver.performance_targets
 
 **Descrição**: Armazena as metas mensais estabelecidas para cada combinação assessor-indicador.
 
@@ -378,14 +378,14 @@ CHECK (card_score BETWEEN 0 AND 100
 ```sql
 -- RN003: Validação de metas lógicas
 CREATE TRIGGER trg_validate_target_logic
-ON metadados.performance_targets
+ON silver.performance_targets
 AFTER INSERT, UPDATE
 AS
 BEGIN
     IF EXISTS (
         SELECT 1
         FROM inserted i
-        JOIN metadados.performance_indicators ind 
+        JOIN silver.performance_indicators ind 
             ON i.indicator_id = ind.indicator_id
         WHERE 
             -- Para indicadores normais
@@ -422,7 +422,7 @@ END;
 ### 7.2 Views de Histórico
 ```sql
 -- View para histórico de mudanças de peso
-CREATE VIEW metadados.vw_assignment_history AS
+CREATE VIEW silver.vw_assignment_history AS
 SELECT 
     a.cod_assessor,
     a.indicator_id,
@@ -433,8 +433,8 @@ SELECT
     DATEDIFF(DAY, a.valid_from, ISNULL(a.valid_to, GETDATE())) as days_active,
     a.created_by,
     a.created_date
-FROM metadados.performance_assignments a
-JOIN metadados.performance_indicators i ON a.indicator_id = i.indicator_id
+FROM silver.performance_assignments a
+JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
 ORDER BY a.cod_assessor, a.indicator_id, a.valid_from;
 ```
 
@@ -569,8 +569,8 @@ WITH score_detail AS (
         MAX(CASE WHEN pt.attribute_name = 'score_final' 
                  THEN CAST(pt.attribute_value AS DECIMAL(5,2)) END) as score
     FROM platinum.performance_tracking pt
-    JOIN metadados.performance_indicators pi ON pt.indicator_id = pi.indicator_id
-    JOIN metadados.performance_assignments pa ON pt.indicator_id = pa.indicator_id 
+    JOIN silver.performance_indicators pi ON pt.indicator_id = pi.indicator_id
+    JOIN silver.performance_assignments pa ON pt.indicator_id = pa.indicator_id 
         AND pt.cod_assessor = pa.cod_assessor
         AND pa.valid_to IS NULL
     WHERE pt.cod_assessor = 'AAI001'
@@ -634,7 +634,7 @@ BEGIN
         attribute_type,
         GETDATE(),
         'prc_calculate_monthly_performance'
-    FROM metadados.performance_assignments a
+    FROM silver.performance_assignments a
     CROSS APPLY platinum.fn_calculate_indicator(
         a.cod_assessor, 
         a.indicator_id, 
@@ -675,8 +675,8 @@ SELECT
     SUM(indicator_weight) as total_weight,
     COUNT(*) as qtd_indicators,
     STRING_AGG(indicator_code, ', ') as indicators
-FROM metadados.performance_assignments a
-JOIN metadados.performance_indicators i ON a.indicator_id = i.indicator_id
+FROM silver.performance_assignments a
+JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
 WHERE a.indicator_type = 'CARD'
   AND a.valid_to IS NULL
 GROUP BY cod_assessor, valid_from
@@ -688,8 +688,8 @@ SELECT
     COUNT(DISTINCT i.indicator_id) as indicators_assigned,
     COUNT(DISTINCT t.indicator_id) as indicators_calculated,
     COUNT(DISTINCT i.indicator_id) - COUNT(DISTINCT t.indicator_id) as pending
-FROM metadados.performance_assignments a
-JOIN metadados.performance_indicators i ON a.indicator_id = i.indicator_id
+FROM silver.performance_assignments a
+JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
 LEFT JOIN platinum.performance_tracking t 
     ON a.cod_assessor = t.cod_assessor 
     AND a.indicator_id = t.indicator_id
@@ -703,7 +703,7 @@ HAVING COUNT(DISTINCT i.indicator_id) > COUNT(DISTINCT t.indicator_id);
 ## 15. Referências e Anexos
 
 ### 15.1 Scripts DDL
-[Disponíveis no repositório: /sql/metadados/performance/]
+[Disponíveis no repositório: /sql/silver/performance/]
 
 ### 15.2 Documentação Relacionada
 - [ARQ-002 - Arquitetura Medallion M7]

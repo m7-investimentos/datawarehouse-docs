@@ -1,15 +1,15 @@
 -- ==============================================================================
--- QRY-ASS-002-create_metadata_performance_assignments
+-- QRY-ASS-002-create_silver_performance_assignments
 -- ==============================================================================
 -- Tipo: DDL - Criação de Tabela
 -- Versão: 1.0.0
 -- Última atualização: 2025-01-17
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
--- Tags: [metadata, ddl, performance, assignments, configuração]
+-- Tags: [silver, ddl, performance, assignments, configuração]
 -- Status: produção
 -- Banco de Dados: SQL Server
--- Schema: metadata
+-- Schema: silver
 -- ==============================================================================
 
 -- ==============================================================================
@@ -17,7 +17,7 @@
 -- ==============================================================================
 /*
 Descrição: 
-    Cria a tabela metadata.performance_assignments para armazenar configurações 
+    Cria a tabela silver.performance_assignments para armazenar configurações 
     validadas de atribuições de indicadores de performance por assessor, com 
     tipos de dados adequados, constraints e relacionamentos.
 
@@ -50,7 +50,7 @@ Estrutura da tabela criada:
 |-----------------------|----------------|---------------------------------------------|
 | assignment_id         | INT            | ID único da atribuição (PK)                 |
 | cod_assessor          | VARCHAR(20)    | Código do assessor                          |
-| indicator_id          | INT            | FK para metadata.performance_indicators     |
+| indicator_id          | INT            | FK para silver.performance_indicators     |
 | indicator_weight      | DECIMAL(5,2)   | Peso do indicador (0.00-100.00)            |
 | valid_from            | DATE           | Data início vigência                        |
 | valid_to              | DATE           | Data fim vigência (NULL = ativo)           |
@@ -70,13 +70,13 @@ Estrutura da tabela criada:
 -- ==============================================================================
 /*
 Tabelas/Views utilizadas:
-    - metadata.performance_indicators: Tabela de indicadores (FK)
+    - silver.performance_indicators: Tabela de indicadores (FK)
     - dim.pessoas: Dimensão de pessoas para validar assessores
     
 Pré-requisitos:
-    - Schema metadata deve existir
-    - Tabela metadata.performance_indicators deve existir
-    - Permissão CREATE TABLE no schema metadata
+    - Schema silver deve existir
+    - Tabela silver.performance_indicators deve existir
+    - Permissão CREATE TABLE no schema silver
 */
 
 -- ==============================================================================
@@ -91,19 +91,19 @@ GO
 -- ==============================================================================
 
 -- Drop tabela existente se necessário
-IF EXISTS (SELECT * FROM sys.tables WHERE object_id = OBJECT_ID(N'[metadata].[performance_assignments]'))
+IF EXISTS (SELECT * FROM sys.tables WHERE object_id = OBJECT_ID(N'[silver].[performance_assignments]'))
 BEGIN
     -- Drop constraints primeiro
-    IF EXISTS (SELECT * FROM sys.foreign_keys WHERE object_id = OBJECT_ID(N'[metadata].[FK_performance_assignments_indicators]'))
-        ALTER TABLE [metadata].[performance_assignments] DROP CONSTRAINT [FK_performance_assignments_indicators];
+    IF EXISTS (SELECT * FROM sys.foreign_keys WHERE object_id = OBJECT_ID(N'[silver].[FK_performance_assignments_indicators]'))
+        ALTER TABLE [silver].[performance_assignments] DROP CONSTRAINT [FK_performance_assignments_indicators];
     
-    DROP TABLE [metadata].[performance_assignments];
-    PRINT 'Tabela [metadata].[performance_assignments] removida.';
+    DROP TABLE [silver].[performance_assignments];
+    PRINT 'Tabela [silver].[performance_assignments] removida.';
 END
 GO
 
 -- Criar tabela
-CREATE TABLE [metadata].[performance_assignments] (
+CREATE TABLE [silver].[performance_assignments] (
     -- Chave primária
     [assignment_id] INT IDENTITY(1,1) NOT NULL,
     
@@ -130,7 +130,7 @@ CREATE TABLE [metadata].[performance_assignments] (
     [bronze_load_id] INT NULL,
     
     -- Constraints
-    CONSTRAINT [PK_metadata_performance_assignments] PRIMARY KEY CLUSTERED ([assignment_id] ASC),
+    CONSTRAINT [PK_silver_performance_assignments] PRIMARY KEY CLUSTERED ([assignment_id] ASC),
     CONSTRAINT [CK_performance_assignments_weight] CHECK ([indicator_weight] >= 0.00 AND [indicator_weight] <= 100.00),
     CONSTRAINT [CK_performance_assignments_dates] CHECK ([valid_to] IS NULL OR [valid_to] > [valid_from])
 ) ON [PRIMARY];
@@ -141,15 +141,15 @@ GO
 -- ==============================================================================
 
 -- FK para performance_indicators
-ALTER TABLE [metadata].[performance_assignments]
+ALTER TABLE [silver].[performance_assignments]
 ADD CONSTRAINT [FK_performance_assignments_indicators]
 FOREIGN KEY ([indicator_id])
-REFERENCES [metadata].[performance_indicators] ([indicator_id]);
+REFERENCES [silver].[performance_indicators] ([indicator_id]);
 GO
 
 -- Unique constraint para evitar duplicatas ativas
 CREATE UNIQUE NONCLUSTERED INDEX [UQ_performance_assignments_active]
-ON [metadata].[performance_assignments] (
+ON [silver].[performance_assignments] (
     [cod_assessor] ASC,
     [indicator_id] ASC,
     [valid_from] ASC
@@ -163,7 +163,7 @@ GO
 
 -- Índice para busca por assessor
 CREATE NONCLUSTERED INDEX [IX_performance_assignments_assessor]
-ON [metadata].[performance_assignments] (
+ON [silver].[performance_assignments] (
     [cod_assessor] ASC,
     [valid_from] ASC,
     [valid_to] ASC
@@ -174,7 +174,7 @@ GO
 
 -- Índice para busca por indicador
 CREATE NONCLUSTERED INDEX [IX_performance_assignments_indicator]
-ON [metadata].[performance_assignments] (
+ON [silver].[performance_assignments] (
     [indicator_id] ASC,
     [is_active] ASC
 )
@@ -183,7 +183,7 @@ GO
 
 -- Índice para vigência atual
 CREATE NONCLUSTERED INDEX [IX_performance_assignments_current]
-ON [metadata].[performance_assignments] (
+ON [silver].[performance_assignments] (
     [valid_from] ASC,
     [valid_to] ASC
 )
@@ -196,11 +196,11 @@ GO
 -- ==============================================================================
 
 -- View para atribuições vigentes
-IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[metadata].[vw_performance_assignments_current]'))
-    DROP VIEW [metadata].[vw_performance_assignments_current];
+IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[silver].[vw_performance_assignments_current]'))
+    DROP VIEW [silver].[vw_performance_assignments_current];
 GO
 
-CREATE VIEW [metadata].[vw_performance_assignments_current]
+CREATE VIEW [silver].[vw_performance_assignments_current]
 AS
 WITH AssignmentsSummary AS (
     SELECT 
@@ -210,8 +210,8 @@ WITH AssignmentsSummary AS (
         COUNT(*) as indicator_count,
         STRING_AGG(CAST(i.indicator_code AS NVARCHAR(MAX)), ', ') 
             WITHIN GROUP (ORDER BY a.indicator_weight DESC) as indicators
-    FROM metadata.performance_assignments a
-    INNER JOIN metadata.performance_indicators i ON a.indicator_id = i.indicator_id
+    FROM silver.performance_assignments a
+    INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
     WHERE a.is_active = 1
       AND a.valid_to IS NULL
       AND GETDATE() >= a.valid_from
@@ -239,7 +239,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Tabela de metadados para configuração de atribuições de indicadores de performance por assessor', 
-    @level0type=N'SCHEMA', @level0name=N'metadata',
+    @level0type=N'SCHEMA', @level0name=N'silver',
     @level1type=N'TABLE', @level1name=N'performance_assignments';
 GO
 
@@ -247,7 +247,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Identificador único da atribuição', 
-    @level0type=N'SCHEMA', @level0name=N'metadata',
+    @level0type=N'SCHEMA', @level0name=N'silver',
     @level1type=N'TABLE', @level1name=N'performance_assignments',
     @level2type=N'COLUMN', @level2name=N'assignment_id';
 GO
@@ -255,7 +255,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Código do assessor (formato AAI###)', 
-    @level0type=N'SCHEMA', @level0name=N'metadata',
+    @level0type=N'SCHEMA', @level0name=N'silver',
     @level1type=N'TABLE', @level1name=N'performance_assignments',
     @level2type=N'COLUMN', @level2name=N'cod_assessor';
 GO
@@ -263,7 +263,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'ID do indicador de performance (FK)', 
-    @level0type=N'SCHEMA', @level0name=N'metadata',
+    @level0type=N'SCHEMA', @level0name=N'silver',
     @level1type=N'TABLE', @level1name=N'performance_assignments',
     @level2type=N'COLUMN', @level2name=N'indicator_id';
 GO
@@ -271,7 +271,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Peso do indicador (0.00-100.00). Para tipo CARD, soma deve ser 100.00 por assessor', 
-    @level0type=N'SCHEMA', @level0name=N'metadata',
+    @level0type=N'SCHEMA', @level0name=N'silver',
     @level1type=N'TABLE', @level1name=N'performance_assignments',
     @level2type=N'COLUMN', @level2name=N'indicator_weight';
 GO
@@ -279,7 +279,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Data de início da vigência da atribuição', 
-    @level0type=N'SCHEMA', @level0name=N'metadata',
+    @level0type=N'SCHEMA', @level0name=N'silver',
     @level1type=N'TABLE', @level1name=N'performance_assignments',
     @level2type=N'COLUMN', @level2name=N'valid_from';
 GO
@@ -287,7 +287,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Data de fim da vigência (NULL = vigente)', 
-    @level0type=N'SCHEMA', @level0name=N'metadata',
+    @level0type=N'SCHEMA', @level0name=N'silver',
     @level1type=N'TABLE', @level1name=N'performance_assignments',
     @level2type=N'COLUMN', @level2name=N'valid_to';
 GO
@@ -308,8 +308,8 @@ SELECT
         WHEN i.indicator_type = 'CARD' THEN 'ERRO'
         ELSE 'N/A'
     END as validacao
-FROM metadata.performance_assignments a
-INNER JOIN metadata.performance_indicators i ON a.indicator_id = i.indicator_id
+FROM silver.performance_assignments a
+INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
 WHERE a.is_active = 1 AND a.valid_to IS NULL
 GROUP BY a.cod_assessor, i.indicator_type
 ORDER BY a.cod_assessor, i.indicator_type;
@@ -324,7 +324,7 @@ SELECT
     created_by,
     approved_date,
     approved_by
-FROM metadata.performance_assignments
+FROM silver.performance_assignments
 WHERE cod_assessor = 'AAI001'  -- Exemplo
 ORDER BY valid_from DESC;
 */
@@ -368,5 +368,5 @@ SELECT
     (SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id = t.object_id) as FKCount
 FROM sys.tables t
 INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE t.name = 'performance_assignments' AND s.name = 'metadata';
+WHERE t.name = 'performance_assignments' AND s.name = 'silver';
 GO

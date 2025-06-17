@@ -1,22 +1,22 @@
 -- ==============================================================================
--- QRY-TAR-002-create_metadata_performance_targets
+-- QRY-TAR-002-create_silver_performance_targets
 -- ==============================================================================
 -- Tipo: Query DDL
 -- Versão: 1.0.0
 -- Última atualização: 2025-01-17
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
--- Tags: [ddl, metadata, performance, targets, metas]
+-- Tags: [ddl, silver, performance, targets, metas]
 -- Status: produção
 -- Banco de Dados: SQL Server
--- Schema: metadata
+-- Schema: silver
 -- ==============================================================================
 
 -- ==============================================================================
 -- 1. OBJETIVO
 -- ==============================================================================
 /*
-Descrição: Cria a tabela metadata.performance_targets para armazenar metas de 
+Descrição: Cria a tabela silver.performance_targets para armazenar metas de 
 performance processadas e validadas, com tipos de dados apropriados e 
 relacionamentos com indicadores.
 
@@ -48,7 +48,7 @@ GO
 -- 3. ESTRUTURA DE SAÍDA
 -- ==============================================================================
 /*
-Tabela criada: metadata.performance_targets
+Tabela criada: silver.performance_targets
 
 Colunas principais:
 - target_id: Identificador único da meta
@@ -66,13 +66,13 @@ Colunas principais:
 -- ==============================================================================
 /*
 Tabelas/Views utilizadas:
-- metadata.performance_indicators: Para FK de indicator_id
+- silver.performance_indicators: Para FK de indicator_id
 - dim.assessores: Para validação de cod_assessor (se existir)
 
 Pré-requisitos:
-- Schema metadata deve existir
-- Tabela metadata.performance_indicators deve existir
-- Permissões CREATE TABLE no schema metadata
+- Schema silver deve existir
+- Tabela silver.performance_indicators deve existir
+- Permissões CREATE TABLE no schema silver
 */
 
 -- ==============================================================================
@@ -91,15 +91,15 @@ GO
 -- ==============================================================================
 
 -- Verificar se a tabela já existe
-IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[metadata].[performance_targets]') AND type in (N'U'))
+IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[silver].[performance_targets]') AND type in (N'U'))
 BEGIN
-    PRINT 'Tabela metadata.performance_targets já existe. Dropando...';
+    PRINT 'Tabela silver.performance_targets já existe. Dropando...';
     
     -- Remover FKs primeiro
-    IF EXISTS (SELECT * FROM sys.foreign_keys WHERE object_id = OBJECT_ID(N'[metadata].[FK_performance_targets_indicators]'))
-        ALTER TABLE [metadata].[performance_targets] DROP CONSTRAINT [FK_performance_targets_indicators];
+    IF EXISTS (SELECT * FROM sys.foreign_keys WHERE object_id = OBJECT_ID(N'[silver].[FK_performance_targets_indicators]'))
+        ALTER TABLE [silver].[performance_targets] DROP CONSTRAINT [FK_performance_targets_indicators];
     
-    DROP TABLE [metadata].[performance_targets];
+    DROP TABLE [silver].[performance_targets];
 END
 GO
 
@@ -107,7 +107,7 @@ GO
 -- 7. QUERY PRINCIPAL - CRIAÇÃO DA TABELA
 -- ==============================================================================
 
-CREATE TABLE [metadata].[performance_targets](
+CREATE TABLE [silver].[performance_targets](
     -- Chave primária
     [target_id] [int] IDENTITY(1,1) NOT NULL,
     
@@ -137,7 +137,7 @@ CREATE TABLE [metadata].[performance_targets](
     [source_id] [varchar](100) NULL,
     [bronze_load_id] [int] NULL,
     
-    CONSTRAINT [PK_metadata_performance_targets] PRIMARY KEY CLUSTERED 
+    CONSTRAINT [PK_silver_performance_targets] PRIMARY KEY CLUSTERED 
     (
         [target_id] ASC
     ) WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY],
@@ -157,12 +157,12 @@ GO
 -- ==============================================================================
 
 -- FK para indicadores
-ALTER TABLE [metadata].[performance_targets] WITH CHECK 
+ALTER TABLE [silver].[performance_targets] WITH CHECK 
 ADD CONSTRAINT [FK_performance_targets_indicators] FOREIGN KEY([indicator_id])
-REFERENCES [metadata].[performance_indicators] ([indicator_id]);
+REFERENCES [silver].[performance_indicators] ([indicator_id]);
 GO
 
-ALTER TABLE [metadata].[performance_targets] CHECK CONSTRAINT [FK_performance_targets_indicators];
+ALTER TABLE [silver].[performance_targets] CHECK CONSTRAINT [FK_performance_targets_indicators];
 GO
 
 -- ==============================================================================
@@ -171,19 +171,19 @@ GO
 
 -- Índice para busca por assessor e período
 CREATE NONCLUSTERED INDEX [IX_targets_assessor_period]
-ON [metadata].[performance_targets] ([cod_assessor], [period_start])
+ON [silver].[performance_targets] ([cod_assessor], [period_start])
 INCLUDE ([indicator_id], [target_value], [stretch_target], [minimum_target]);
 GO
 
 -- Índice para busca por indicador
 CREATE NONCLUSTERED INDEX [IX_targets_indicator]
-ON [metadata].[performance_targets] ([indicator_id], [period_start])
+ON [silver].[performance_targets] ([indicator_id], [period_start])
 INCLUDE ([cod_assessor], [target_value]);
 GO
 
 -- Índice para análises temporais
 CREATE NONCLUSTERED INDEX [IX_targets_temporal]
-ON [metadata].[performance_targets] ([period_start], [period_end])
+ON [silver].[performance_targets] ([period_start], [period_end])
 WHERE [is_active] = 1;
 GO
 
@@ -192,12 +192,12 @@ GO
 -- ==============================================================================
 
 -- Validar que period_end >= period_start
-ALTER TABLE [metadata].[performance_targets] WITH CHECK 
+ALTER TABLE [silver].[performance_targets] WITH CHECK 
 ADD CONSTRAINT [CK_targets_period_valid] CHECK ([period_end] >= [period_start]);
 GO
 
 -- Validar que valores não sejam negativos (exceto quando permitido)
-ALTER TABLE [metadata].[performance_targets] WITH CHECK 
+ALTER TABLE [silver].[performance_targets] WITH CHECK 
 ADD CONSTRAINT [CK_targets_values_positive] CHECK (
     [target_value] >= 0 OR [target_value] < 0 -- Permite negativos para alguns indicadores
 );
@@ -211,7 +211,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Tabela de metadados com metas de performance mensais por assessor e indicador', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets';
 GO
 
@@ -219,7 +219,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'ID único da meta (auto-incremento)', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'target_id';
 GO
@@ -228,15 +228,15 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Código do assessor/AAI', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'cod_assessor';
 GO
 
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
-    @value=N'ID do indicador (FK para metadata.performance_indicators)', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @value=N'ID do indicador (FK para silver.performance_indicators)', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'indicator_id';
 GO
@@ -245,7 +245,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Tipo do período (MENSAL, TRIMESTRAL, ANUAL)', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'period_type';
 GO
@@ -253,7 +253,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Data de início do período', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'period_start';
 GO
@@ -261,7 +261,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Data de fim do período', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'period_end';
 GO
@@ -270,7 +270,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Valor da meta padrão (100% de atingimento)', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'target_value';
 GO
@@ -278,7 +278,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Meta stretch/desafio (>100% de atingimento)', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'stretch_target';
 GO
@@ -286,7 +286,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Meta mínima aceitável', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'minimum_target';
 GO
@@ -295,7 +295,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Flag indicando se a meta está ativa', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'is_active';
 GO
@@ -303,7 +303,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Data de criação do registro', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'created_date';
 GO
@@ -311,7 +311,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Usuário que criou o registro', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'created_by';
 GO
@@ -319,7 +319,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Data da última modificação', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'modified_date';
 GO
@@ -327,7 +327,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Usuário que fez a última modificação', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'modified_by';
 GO
@@ -336,7 +336,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'Sistema de origem dos dados', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'source_system';
 GO
@@ -344,7 +344,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'ID do registro no sistema de origem', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'source_id';
 GO
@@ -352,7 +352,7 @@ GO
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
     @value=N'ID do registro na tabela bronze de origem', 
-    @level0type=N'SCHEMA',@level0name=N'metadata', 
+    @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
     @level2type=N'COLUMN',@level2name=N'bronze_load_id';
 GO
@@ -373,7 +373,7 @@ SELECT
     c.is_identity
 FROM sys.columns c
 INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
-WHERE c.object_id = OBJECT_ID('metadata.performance_targets')
+WHERE c.object_id = OBJECT_ID('silver.performance_targets')
 ORDER BY c.column_id;
 
 -- Query para verificar relacionamentos
@@ -399,8 +399,8 @@ SELECT
     COUNT(*) as months_defined,
     AVG(t.target_value) as avg_target,
     SUM(t.target_value) as total_annual_target
-FROM metadata.performance_targets t
-INNER JOIN metadata.performance_indicators i ON t.indicator_id = i.indicator_id
+FROM silver.performance_targets t
+INNER JOIN silver.performance_indicators i ON t.indicator_id = i.indicator_id
 WHERE t.is_active = 1
 GROUP BY t.cod_assessor, i.indicator_name, YEAR(t.period_start)
 ORDER BY t.cod_assessor, i.indicator_name, target_year;
@@ -422,13 +422,13 @@ Versão  | Data       | Autor                    | Descrição
 /*
 Notas importantes:
 - Esta tabela armazena metas processadas e validadas (camada Metadata)
-- Relacionamento obrigatório com metadata.performance_indicators
+- Relacionamento obrigatório com silver.performance_indicators
 - Constraint única previne duplicação de metas para mesmo assessor/indicador/período
 - Valores decimais com precisão 18,4 para suportar valores monetários grandes
 - Índices otimizados para queries de análise e cálculo de atingimento
 
 Troubleshooting comum:
-1. Erro de FK: Verificar se indicator_id existe em metadata.performance_indicators
+1. Erro de FK: Verificar se indicator_id existe em silver.performance_indicators
 2. Erro de constraint única: Verificar duplicatas de assessor/indicador/período
 3. Performance lenta: Atualizar estatísticas dos índices
 
@@ -436,5 +436,5 @@ Contato para dúvidas: bruno.chiaramonti@multisete.com
 */
 
 -- Confirmar criação
-PRINT 'Tabela metadata.performance_targets criada com sucesso!';
+PRINT 'Tabela silver.performance_targets criada com sucesso!';
 GO

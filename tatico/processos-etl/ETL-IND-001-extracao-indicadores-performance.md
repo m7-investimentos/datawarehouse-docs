@@ -7,7 +7,7 @@ versão: 1.0.0
 última_atualização: 2025-01-16
 autor: arquitetura.dados@m7investimentos.com.br
 aprovador: diretoria.ti@m7investimentos.com.br
-tags: [etl, performance, indicadores, google-sheets, bronze, metadados]
+tags: [etl, performance, indicadores, google-sheets, bronze, silver]
 status: aprovado
 dependências:
   - tipo: modelo
@@ -20,7 +20,7 @@ dependências:
 
 ## 1. Objetivo
 
-Extrair dados de configuração de indicadores de performance da planilha Google Sheets `m7_performance_indicators` para a camada Bronze do Data Warehouse, permitindo posterior validação e carga na camada de metadados.
+Extrair dados de configuração de indicadores de performance da planilha Google Sheets `m7_performance_indicators` para a camada Bronze do Data Warehouse, permitindo posterior validação e carga na camada silver.
 
 ## 2. Escopo e Aplicabilidade
 
@@ -31,7 +31,7 @@ Extrair dados de configuração de indicadores de performance da planilha Google
 - **Frequência**: Sob demanda (mudanças são raras)
 
 ### 2.2 Fora de Escopo
-- Validação complexa de fórmulas SQL (feita na transformação Bronze → Metadados)
+- Validação complexa de fórmulas SQL (feita na transformação Bronze → Silver)
 - Processamento de outras planilhas (assignments, targets)
 - Execução das fórmulas de cálculo
 
@@ -382,7 +382,7 @@ CREATE PROCEDURE bronze.prc_process_indicators_to_metadata
 AS
 BEGIN
     -- Validar dados no bronze
-    -- Fazer merge com metadados.performance_indicators
+    -- Fazer merge com silver.performance_indicators
     -- Marcar bronze como processado
     -- Registrar auditoria
 END

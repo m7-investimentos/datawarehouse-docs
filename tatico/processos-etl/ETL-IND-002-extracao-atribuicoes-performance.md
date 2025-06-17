@@ -7,7 +7,7 @@ versão: 1.0.0
 última_atualização: 2025-01-16
 autor: arquitetura.dados@m7investimentos.com.br
 aprovador: diretoria.ti@m7investimentos.com.br
-tags: [etl, performance, assignments, google-sheets, bronze, metadados]
+tags: [etl, performance, assignments, google-sheets, bronze, silver]
 status: aprovado
 dependências:
   - tipo: arquitetura
@@ -709,8 +709,8 @@ BEGIN
             WHERE is_processed = 0
               AND processing_status IS NULL
         )
-        -- 3. Merge com metadados
-        MERGE metadados.performance_assignments AS target
+        -- 3. Merge com silver
+        MERGE silver.performance_assignments AS target
         USING transformed AS source
             ON target.cod_assessor = source.cod_assessor
            AND target.indicator_code = source.indicator_code
@@ -724,7 +724,7 @@ BEGIN
             INSERT (cod_assessor, indicator_id, indicator_weight, 
                    valid_from, valid_to, created_by, created_date)
             VALUES (source.cod_assessor, 
-                   (SELECT indicator_id FROM metadados.performance_indicators 
+                   (SELECT indicator_id FROM silver.performance_indicators 
                     WHERE indicator_code = source.indicator_code),
                    source.indicator_weight,
                    source.valid_from,
