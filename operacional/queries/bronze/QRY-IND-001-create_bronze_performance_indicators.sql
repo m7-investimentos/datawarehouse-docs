@@ -6,7 +6,7 @@
 -- Última atualização: 2025-01-17
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
--- Tags: [bronze, performance, indicadores, staging, ddl]
+-- Tags: [ddl, bronze, performance, indicators, kpis]
 -- Status: produção
 -- Banco de Dados: SQL Server
 -- Schema: bronze
@@ -16,17 +16,19 @@
 -- 1. OBJETIVO
 -- ==============================================================================
 /*
-Descrição: Cria a tabela bronze.performance_indicators para receber dados brutos
-           de indicadores de performance extraídos do Google Sheets.
+Descrição: Cria a tabela bronze.performance_indicators para armazenar indicadores 
+de performance extraídos do Google Sheets de forma bruta, preservando todos os 
+dados originais sem transformações.
 
 Casos de uso:
-- Staging inicial dos dados de indicadores de performance
-- Armazenamento temporário antes da validação e transformação
-- Auditoria e rastreabilidade de mudanças nos indicadores
+- Staging inicial de indicadores de performance
+- Histórico de todas as cargas realizadas
+- Base para transformações para camada Silver
+- Auditoria de mudanças nos indicadores
 
-Frequência de execução: Uma única vez (criação) ou em recriações
+Frequência de execução: Uma vez (criação inicial)
 Tempo médio de execução: < 1 segundo
-Volume esperado de linhas: 10-50 registros por carga
+Volume esperado de linhas: 10-50 indicadores
 */
 
 -- ==============================================================================
@@ -34,7 +36,12 @@ Volume esperado de linhas: 10-50 registros por carga
 -- ==============================================================================
 /*
 Parâmetros necessários para execução:
-Nenhum - Script DDL de criação de objeto
+N/A - Script DDL sem parâmetros
+
+Exemplo de uso:
+USE M7Medallion;
+GO
+-- Executar script completo
 */
 
 -- ==============================================================================
@@ -43,223 +50,316 @@ Nenhum - Script DDL de criação de objeto
 /*
 Tabela criada: bronze.performance_indicators
 
-Colunas de controle:
-- load_id: Identificador único da carga
-- load_timestamp: Momento da carga
-- load_source: Origem dos dados
-
-Colunas de dados (todas VARCHAR para aceitar qualquer formato):
+Colunas principais:
+- load_id: ID único da carga (IDENTITY)
 - indicator_code: Código do indicador
 - indicator_name: Nome do indicador
 - category: Categoria do indicador
-- unit: Unidade de medida
-- aggregation: Método de agregação
-- formula: Fórmula SQL do indicador
-- is_inverted: Indicador invertido (menor é melhor)
-- is_active: Indicador ativo
-- description: Descrição do indicador
-- created_date: Data de criação
-- notes: Observações
-
-Colunas de processamento:
-- row_number: Número da linha na planilha original
-- row_hash: Hash MD5 do registro para detectar mudanças
-- is_processed: Flag de processamento
-- processing_date: Data do processamento
-- processing_status: Status do processamento
-- processing_notes: Notas do processamento
+- Campos de controle ETL
 */
 
 -- ==============================================================================
 -- 4. DEPENDÊNCIAS
 -- ==============================================================================
 /*
-Objetos necessários:
-- Schema bronze deve existir
+Tabelas/Views utilizadas:
+N/A
 
-Permissões requeridas:
-- CREATE TABLE no schema bronze
-- Usuário ETL deve ter INSERT/UPDATE/DELETE na tabela
+Pré-requisitos:
+- Schema bronze deve existir
+- Permissões CREATE TABLE no schema bronze
 */
 
 -- ==============================================================================
 -- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
 -- ==============================================================================
--- Usar READ_COMMITTED_SNAPSHOT para evitar locks durante leitura
--- A tabela é pequena, não requer particionamento
+USE M7Medallion;
+GO
 
-USE [M7Medallion];
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
 GO
 
 -- ==============================================================================
--- 6. CRIAÇÃO DA TABELA
+-- 6. VERIFICAÇÃO E LIMPEZA
 -- ==============================================================================
 
--- Drop tabela se existir (cuidado em produção!)
-IF EXISTS (SELECT * FROM sys.tables WHERE object_id = OBJECT_ID(N'[bronze].[performance_indicators]'))
+-- Verificar se a tabela já existe
+IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bronze].[performance_indicators]') AND type in (N'U'))
 BEGIN
+    PRINT 'Tabela bronze.performance_indicators já existe. Dropando...';
     DROP TABLE [bronze].[performance_indicators];
-    PRINT 'Tabela bronze.performance_indicators removida';
 END
 GO
 
--- Criar tabela
-CREATE TABLE [bronze].[performance_indicators] (
-    -- Campos de controle de carga
-    [load_id] INT IDENTITY(1,1) NOT NULL,
-    [load_timestamp] DATETIME NOT NULL DEFAULT GETDATE(),
-    [load_source] VARCHAR(200) NOT NULL DEFAULT 'GoogleSheets:m7_performance_indicators',
+-- ==============================================================================
+-- 7. QUERY PRINCIPAL - CRIAÇÃO DA TABELA
+-- ==============================================================================
+
+CREATE TABLE [bronze].[performance_indicators](
+    -- Metadados de carga
+    [load_id] [int] IDENTITY(1,1) NOT NULL,
+    [load_timestamp] [datetime] NOT NULL DEFAULT (GETDATE()),
+    [load_source] [varchar](100) NOT NULL,
     
-    -- Campos da planilha (todos VARCHAR para aceitar qualquer entrada)
-    [indicator_code] VARCHAR(MAX) NULL,
-    [indicator_name] VARCHAR(MAX) NULL,
-    [category] VARCHAR(MAX) NULL,
-    [unit] VARCHAR(MAX) NULL,
-    [aggregation] VARCHAR(MAX) NULL,
-    [formula] VARCHAR(MAX) NULL,
-    [is_inverted] VARCHAR(MAX) NULL,
-    [is_active] VARCHAR(MAX) NULL,
-    [description] VARCHAR(MAX) NULL,
-    [created_date] VARCHAR(MAX) NULL,
-    [notes] VARCHAR(MAX) NULL,
+    -- Dados do indicador (todos VARCHAR para preservar formato original)
+    [indicator_code] [varchar](50) NOT NULL,
+    [indicator_name] [varchar](200) NOT NULL,
+    [category] [varchar](100) NULL,
+    [subcategory] [varchar](100) NULL,
+    [indicator_type] [varchar](50) NULL,
+    [unit] [varchar](50) NULL,
+    [aggregation] [varchar](50) NULL,
+    [formula] [varchar](500) NULL,
+    [is_inverted] [varchar](10) NULL,
+    [is_active] [varchar](10) NULL,
+    [description] [varchar](1000) NULL,
+    [notes] [varchar](1000) NULL,
     
-    -- Metadados de controle
-    [row_number] INT NULL,
-    [row_hash] VARCHAR(32) NULL,
-    [is_processed] BIT NOT NULL DEFAULT 0,
-    [processing_date] DATETIME NULL,
-    [processing_status] VARCHAR(50) NULL,
-    [processing_notes] VARCHAR(MAX) NULL,
+    -- Controle de linha original
+    [row_number] [int] NULL,
+    [row_hash] [varchar](64) NULL,
     
-    -- Coluna computada para permitir indexação do indicator_code
-    [indicator_code_indexed] AS CAST(LEFT([indicator_code], 100) AS VARCHAR(100)) PERSISTED,
+    -- Controle de processamento
+    [is_processed] [bit] NOT NULL DEFAULT ((0)),
+    [processing_date] [datetime] NULL,
+    [processing_status] [varchar](50) NULL,
+    [processing_notes] [varchar](500) NULL,
     
-    -- Constraints
-    CONSTRAINT [PK_bronze_performance_indicators] PRIMARY KEY CLUSTERED ([load_id] ASC)
+    CONSTRAINT [PK_bronze_performance_indicators] PRIMARY KEY CLUSTERED 
+    (
+        [load_id] ASC
+    ) WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY];
 GO
 
 -- ==============================================================================
--- 7. ÍNDICES E OTIMIZAÇÕES
+-- 8. ÍNDICES E OTIMIZAÇÕES
 -- ==============================================================================
 
--- Índice para busca por timestamp de carga
-CREATE NONCLUSTERED INDEX [IX_bronze_performance_indicators_load_timestamp]
-ON [bronze].[performance_indicators] ([load_timestamp] DESC)
-INCLUDE ([load_source], [is_processed]);
+-- Índice para busca por código do indicador
+CREATE NONCLUSTERED INDEX [IX_bronze_indicators_code]
+ON [bronze].[performance_indicators] ([indicator_code])
+INCLUDE ([indicator_name], [is_processed]);
 GO
 
--- Índice para processamento pendente
-CREATE NONCLUSTERED INDEX [IX_bronze_performance_indicators_pending]
-ON [bronze].[performance_indicators] ([is_processed])
+-- Índice para processamento ETL
+CREATE NONCLUSTERED INDEX [IX_bronze_indicators_processing]
+ON [bronze].[performance_indicators] ([is_processed], [load_timestamp])
 WHERE [is_processed] = 0;
 GO
 
--- Índice para busca por código do indicador (usando coluna computada)
-CREATE NONCLUSTERED INDEX [IX_bronze_performance_indicators_code]
-ON [bronze].[performance_indicators] ([indicator_code_indexed])
-WHERE [indicator_code] IS NOT NULL;
+-- ==============================================================================
+-- 9. DOCUMENTAÇÃO DE COLUNAS
+-- ==============================================================================
+
+-- Descrição da tabela
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Tabela bronze para staging de indicadores de performance do Google Sheets', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators';
+GO
+
+-- Metadados de carga
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'ID único da carga (auto-incremento)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'load_id';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Timestamp da carga dos dados', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'load_timestamp';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Fonte dos dados (Google Sheets ID)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'load_source';
+GO
+
+-- Dados do indicador
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Código único do indicador', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'indicator_code';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Nome descritivo do indicador', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'indicator_name';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Categoria do indicador', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'category';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Subcategoria do indicador', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'subcategory';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Tipo do indicador (CARD/RANKING)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'indicator_type';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Unidade de medida', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'unit';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Método de agregação (SUM/AVG/MAX/MIN)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'aggregation';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Fórmula de cálculo', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'formula';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Indicador invertido (1=menor é melhor)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'is_inverted';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Indicador ativo (1=ativo)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'is_active';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Descrição detalhada do indicador', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'description';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Notas e observações', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'notes';
+GO
+
+-- Controle
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Número da linha no arquivo original', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'row_number';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Hash MD5 da linha para detecção de mudanças', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'row_hash';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Flag indicando se o registro foi processado', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'is_processed';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Data do processamento', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'processing_date';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Status do processamento', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'processing_status';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Notas sobre o processamento', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_indicators', 
+    @level2type=N'COLUMN',@level2name=N'processing_notes';
 GO
 
 -- ==============================================================================
--- 8. DOCUMENTAÇÃO E PROPRIEDADES ESTENDIDAS
--- ==============================================================================
-
--- Documentação da tabela
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Tabela bronze para staging de indicadores de performance extraídos do Google Sheets. Armazena dados brutos antes da validação e transformação.',
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_indicators';
-GO
-
--- Documentação das colunas principais
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Identificador único e incremental da carga',
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_indicators',
-    @level2type=N'COLUMN', @level2name=N'load_id';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Código único do indicador de performance (ex: CAPTACAO_LIQUIDA)',
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_indicators',
-    @level2type=N'COLUMN', @level2name=N'indicator_code';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Categoria do indicador: FINANCEIRO, QUALIDADE, VOLUME, COMPORTAMENTAL, PROCESSO, GATILHO',
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_indicators',
-    @level2type=N'COLUMN', @level2name=N'category';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Fórmula SQL para cálculo do indicador',
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_indicators',
-    @level2type=N'COLUMN', @level2name=N'formula';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Hash MD5 do registro para detectar mudanças',
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_indicators',
-    @level2type=N'COLUMN', @level2name=N'row_hash';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Coluna computada com os primeiros 100 caracteres do indicator_code para permitir indexação',
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_indicators',
-    @level2type=N'COLUMN', @level2name=N'indicator_code_indexed';
-GO
-
--- ==============================================================================
--- 9. HISTÓRICO DE MUDANÇAS
+-- 10. HISTÓRICO DE MUDANÇAS
 -- ==============================================================================
 /*
-Versão  | Data       | Autor                   | Descrição
---------|------------|-------------------------|--------------------------------------------
-1.0.0   | 2025-01-17 | bruno.chiaramonti      | Criação inicial da tabela
+Versão  | Data       | Autor                    | Descrição
+--------|------------|--------------------------|--------------------------------------------
+1.0.0   | 2025-01-17 | bruno.chiaramonti       | Criação inicial da tabela
+
 */
 
 -- ==============================================================================
--- 10. NOTAS E OBSERVAÇÕES
+-- 11. NOTAS E OBSERVAÇÕES
 -- ==============================================================================
 /*
 Notas importantes:
-- Tabela bronze aceita todos os campos como VARCHAR para máxima flexibilidade
-- Validações e conversões de tipo são feitas na transformação Bronze → Metadata
-- Hash é calculado para detectar mudanças nos registros
-- Manter apenas últimas 10 cargas (limpeza via job)
+- Esta tabela armazena dados brutos do Google Sheets sem transformações
+- Todos os campos são VARCHAR para preservar o formato original
+- Processamento para Silver deve validar e converter tipos de dados
+- Hash de linha usado para detectar mudanças nos indicadores
 
 Troubleshooting comum:
-1. Campos truncados: Aumentar tamanho se necessário (VARCHAR(MAX) já é o máximo)
-2. Performance lenta: Volume é baixo, não deve ocorrer
-3. Locks durante carga: Usar TABLOCK hint no INSERT
+1. Erro de duplicação: Verificar indicator_code duplicado na mesma carga
+2. Performance: Criar estatísticas nos índices após grandes cargas
 
-Contato para dúvidas: arquitetura.dados@m7investimentos.com.br
+Contato para dúvidas: bruno.chiaramonti@multisete.com
 */
 
 -- Confirmar criação
-SELECT 
-    t.name AS TableName,
-    s.name AS SchemaName,
-    t.create_date,
-    t.modify_date,
-    p.rows AS RowCounts
-FROM sys.tables t
-INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-INNER JOIN sys.partitions p ON t.object_id = p.object_id AND p.index_id IN (0,1)
-WHERE s.name = 'bronze' AND t.name = 'performance_indicators';
-GO
-
 PRINT 'Tabela bronze.performance_indicators criada com sucesso!';
+GO

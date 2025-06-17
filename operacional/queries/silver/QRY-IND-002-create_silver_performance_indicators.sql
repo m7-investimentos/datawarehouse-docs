@@ -272,7 +272,13 @@ Contato para dúvidas: arquitetura.dados@m7investimentos.com.br
 */
 
 -- Criar view auxiliar para indicadores ativos
+-- Verificar se a view já existe
+IF EXISTS (SELECT * FROM sys.views WHERE object_id = OBJECT_ID(N'[silver].[vw_active_indicators]'))
+BEGIN
+    DROP VIEW [silver].[vw_active_indicators];
+END
 GO
+
 CREATE VIEW [silver].[vw_active_indicators]
 AS
 SELECT 

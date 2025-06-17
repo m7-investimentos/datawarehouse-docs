@@ -1,12 +1,12 @@
 -- ==============================================================================
 -- QRY-ASS-001-create_bronze_performance_assignments
 -- ==============================================================================
--- Tipo: DDL - Criação de Tabela
+-- Tipo: Query DDL
 -- Versão: 1.0.0
 -- Última atualização: 2025-01-17
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
--- Tags: [bronze, ddl, performance, assignments, etl]
+-- Tags: [ddl, bronze, performance, assignments, atribuicoes]
 -- Status: produção
 -- Banco de Dados: SQL Server
 -- Schema: bronze
@@ -16,19 +16,19 @@
 -- 1. OBJETIVO
 -- ==============================================================================
 /*
-Descrição: 
-    Cria a tabela bronze.performance_assignments para armazenar dados brutos de 
-    atribuições de indicadores de performance por assessor, extraídos da planilha 
-    Google Sheets m7_performance_assignments.
+Descrição: Cria a tabela bronze.performance_assignments para armazenar atribuições 
+de indicadores de performance por assessor extraídas do Google Sheets de forma 
+bruta, preservando todos os dados originais sem transformações.
 
 Casos de uso:
-    - Armazenamento temporário de dados extraídos do Google Sheets
-    - Validação e processamento de atribuições antes da carga em metadata
-    - Auditoria de mudanças nas atribuições ao longo do tempo
+- Staging inicial de atribuições de indicadores
+- Histórico de todas as cargas realizadas
+- Base para transformações para camada Silver
+- Auditoria de mudanças nas atribuições
 
-Frequência de execução: Uma única vez (criação) ou em caso de rebuild
+Frequência de execução: Uma vez (criação inicial)
 Tempo médio de execução: < 1 segundo
-Volume esperado de linhas: ~200-500 registros por carga
+Volume esperado de linhas: 200-500 atribuições (assessores x indicadores)
 */
 
 -- ==============================================================================
@@ -36,266 +36,332 @@ Volume esperado de linhas: ~200-500 registros por carga
 -- ==============================================================================
 /*
 Parâmetros necessários para execução:
-    Nenhum - Script DDL de criação de tabela
+N/A - Script DDL sem parâmetros
+
+Exemplo de uso:
+USE M7Medallion;
+GO
+-- Executar script completo
 */
 
 -- ==============================================================================
 -- 3. ESTRUTURA DE SAÍDA
 -- ==============================================================================
 /*
-Estrutura da tabela criada:
+Tabela criada: bronze.performance_assignments
 
-NOTA IMPORTANTE: 
-- Campos VARCHAR(MAX) não podem ser usados como chave em índices no SQL Server
-- Índices foram criados apenas em colunas de tamanho fixo (INT, BIT, DATETIME, VARCHAR(32))
-- Para buscar por campos VARCHAR(MAX), use queries diretas sem depender de índices
-
-| Coluna                | Tipo         | Descrição                                   |
-|-----------------------|--------------|---------------------------------------------|
-| load_id               | INT          | ID único da carga (auto-incremento)        |
-| load_timestamp        | DATETIME     | Data/hora da carga                          |
-| load_source           | VARCHAR(200) | Fonte dos dados (planilha)                  |
-| cod_assessor          | VARCHAR(MAX) | Código do assessor                          |
-| nome_assessor         | VARCHAR(MAX) | Nome do assessor                            |
-| indicator_code        | VARCHAR(MAX) | Código do indicador                         |
-| indicator_type        | VARCHAR(MAX) | Tipo (CARD, GATILHO, KPI, etc.)            |
-| weight                | VARCHAR(MAX) | Peso do indicador (0-100)                   |
-| valid_from            | VARCHAR(MAX) | Data início vigência                        |
-| valid_to              | VARCHAR(MAX) | Data fim vigência                           |
-| created_by            | VARCHAR(MAX) | Usuário que criou                           |
-| approved_by           | VARCHAR(MAX) | Usuário que aprovou                         |
-| comments              | VARCHAR(MAX) | Comentários                                 |
-| row_number            | INT          | Número da linha na planilha                 |
-| row_hash              | VARCHAR(32)  | Hash MD5 da linha                           |
-| is_current            | BIT          | Flag se está vigente                        |
-| is_processed          | BIT          | Flag se foi processado                      |
-| processing_date       | DATETIME     | Data do processamento                       |
-| processing_status     | VARCHAR(50)  | Status do processamento                     |
-| processing_notes      | VARCHAR(MAX) | Notas do processamento                      |
-| weight_sum_valid      | BIT          | Flag se soma de pesos é válida              |
-| indicator_exists      | BIT          | Flag se indicador existe                    |
-| validation_errors     | VARCHAR(MAX) | Erros de validação em JSON                  |
+Colunas principais:
+- load_id: ID único da carga (IDENTITY)
+- cod_assessor: Código do assessor
+- indicator_code: Código do indicador
+- weight: Peso do indicador
+- Campos de controle ETL
 */
 
 -- ==============================================================================
 -- 4. DEPENDÊNCIAS
 -- ==============================================================================
 /*
-Objetos do banco utilizados:
-    - Schema: bronze (deve existir)
-    
+Tabelas/Views utilizadas:
+N/A
+
 Pré-requisitos:
-    - Permissão CREATE TABLE no schema bronze
-    - SQL Server 2016 ou superior (para suporte a JSON)
+- Schema bronze deve existir
+- Permissões CREATE TABLE no schema bronze
 */
 
 -- ==============================================================================
 -- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
 -- ==============================================================================
--- Configurações específicas do banco para otimização
-USE [M7Medallion];
+USE M7Medallion;
+GO
+
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
 GO
 
 -- ==============================================================================
--- 6. DDL PRINCIPAL
+-- 6. VERIFICAÇÃO E LIMPEZA
 -- ==============================================================================
 
--- Drop tabela existente se necessário
-IF EXISTS (SELECT * FROM sys.tables WHERE object_id = OBJECT_ID(N'[bronze].[performance_assignments]'))
+-- Verificar se a tabela já existe
+IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bronze].[performance_assignments]') AND type in (N'U'))
 BEGIN
+    PRINT 'Tabela bronze.performance_assignments já existe. Dropando...';
     DROP TABLE [bronze].[performance_assignments];
-    PRINT 'Tabela [bronze].[performance_assignments] removida.';
 END
 GO
 
--- Criar tabela
-CREATE TABLE [bronze].[performance_assignments] (
-    -- Campos de controle de carga
-    [load_id] INT IDENTITY(1,1) NOT NULL,
-    [load_timestamp] DATETIME NOT NULL DEFAULT GETDATE(),
-    [load_source] VARCHAR(200) NOT NULL DEFAULT 'GoogleSheets:m7_performance_assignments',
+-- ==============================================================================
+-- 7. QUERY PRINCIPAL - CRIAÇÃO DA TABELA
+-- ==============================================================================
+
+CREATE TABLE [bronze].[performance_assignments](
+    -- Metadados de carga
+    [load_id] [int] IDENTITY(1,1) NOT NULL,
+    [load_timestamp] [datetime] NOT NULL DEFAULT (GETDATE()),
+    [load_source] [varchar](100) NOT NULL,
     
-    -- Campos da planilha (todos VARCHAR para Bronze)
-    [cod_assessor] VARCHAR(MAX),
-    [nome_assessor] VARCHAR(MAX),
-    [indicator_code] VARCHAR(MAX),
-    [indicator_type] VARCHAR(MAX),
-    [weight] VARCHAR(MAX),
-    [valid_from] VARCHAR(MAX),
-    [valid_to] VARCHAR(MAX),
-    [created_by] VARCHAR(MAX),
-    [approved_by] VARCHAR(MAX),
-    [comments] VARCHAR(MAX),
-    
-    -- Metadados de controle
-    [row_number] INT,
-    [row_hash] VARCHAR(32),
-    [is_current] BIT,
-    [is_processed] BIT DEFAULT 0,
-    [processing_date] DATETIME NULL,
-    [processing_status] VARCHAR(50) NULL,
-    [processing_notes] VARCHAR(MAX) NULL,
+    -- Dados da atribuição (todos VARCHAR para preservar formato original)
+    [cod_assessor] [varchar](20) NOT NULL,
+    [nome_assessor] [varchar](200) NULL,
+    [indicator_code] [varchar](50) NOT NULL,
+    [weight] [varchar](20) NULL,
+    [is_active] [varchar](10) NULL,
+    [valid_from] [varchar](30) NULL,
+    [valid_to] [varchar](30) NULL,
+    [indicator_type] [varchar](50) NULL,
+    [notes] [varchar](1000) NULL,
     
     -- Validações
-    [weight_sum_valid] BIT,
-    [indicator_exists] BIT,
-    [validation_errors] VARCHAR(MAX),
+    [weight_validation] [varchar](10) NULL,
+    [total_weight] [varchar](20) NULL,
     
-    -- Constraints
-    CONSTRAINT [PK_bronze_performance_assignments] PRIMARY KEY CLUSTERED ([load_id] ASC)
+    -- Controle de linha original
+    [row_number] [int] NULL,
+    [row_hash] [varchar](64) NULL,
+    
+    -- Controle de processamento
+    [is_processed] [bit] NOT NULL DEFAULT ((0)),
+    [processing_date] [datetime] NULL,
+    [processing_status] [varchar](50) NULL,
+    [processing_notes] [varchar](500) NULL,
+    
+    CONSTRAINT [PK_bronze_performance_assignments] PRIMARY KEY CLUSTERED 
+    (
+        [load_id] ASC
+    ) WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY];
 GO
 
 -- ==============================================================================
--- 7. ÍNDICES E OTIMIZAÇÕES
+-- 8. ÍNDICES E OTIMIZAÇÕES
 -- ==============================================================================
 
--- Índice para busca por load_id e processamento
-CREATE NONCLUSTERED INDEX [IX_bronze_assignments_load] 
-ON [bronze].[performance_assignments] (
-    [load_id] ASC,
-    [is_processed] ASC
-)
-INCLUDE ([row_number], [is_current]);
+-- Índice para busca por assessor
+CREATE NONCLUSTERED INDEX [IX_bronze_assignments_assessor]
+ON [bronze].[performance_assignments] ([cod_assessor])
+INCLUDE ([indicator_code], [weight], [is_processed]);
 GO
 
--- Índice para processamento pendente
-CREATE NONCLUSTERED INDEX [IX_bronze_assignments_pending] 
-ON [bronze].[performance_assignments] ([is_processed] ASC, [load_timestamp] ASC)
+-- Índice para busca por indicador
+CREATE NONCLUSTERED INDEX [IX_bronze_assignments_indicator]
+ON [bronze].[performance_assignments] ([indicator_code])
+INCLUDE ([cod_assessor], [weight]);
+GO
+
+-- Índice para processamento ETL
+CREATE NONCLUSTERED INDEX [IX_bronze_assignments_processing]
+ON [bronze].[performance_assignments] ([is_processed], [load_timestamp])
 WHERE [is_processed] = 0;
 GO
 
--- Índice para validações com erro de peso
-CREATE NONCLUSTERED INDEX [IX_bronze_assignments_weight_errors] 
-ON [bronze].[performance_assignments] ([weight_sum_valid] ASC, [load_id] ASC)
-WHERE [weight_sum_valid] = 0;
+-- ==============================================================================
+-- 9. DOCUMENTAÇÃO DE COLUNAS
+-- ==============================================================================
+
+-- Descrição da tabela
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Tabela bronze para staging de atribuições de indicadores de performance do Google Sheets', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments';
 GO
 
--- Índice para validações com erro de indicador
-CREATE NONCLUSTERED INDEX [IX_bronze_assignments_indicator_errors] 
-ON [bronze].[performance_assignments] ([indicator_exists] ASC, [load_id] ASC)
-WHERE [indicator_exists] = 0;
+-- Metadados de carga
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'ID único da carga (auto-incremento)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'load_id';
 GO
 
--- Índice para row_hash (busca de duplicatas)
-CREATE NONCLUSTERED INDEX [IX_bronze_assignments_hash] 
-ON [bronze].[performance_assignments] ([row_hash] ASC)
-INCLUDE ([load_id], [is_processed]);
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Timestamp da carga dos dados', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'load_timestamp';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Fonte dos dados (Google Sheets ID)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'load_source';
+GO
+
+-- Dados da atribuição
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Código do assessor/AAI', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'cod_assessor';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Nome do assessor', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'nome_assessor';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Código do indicador', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'indicator_code';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Peso do indicador (%)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'weight';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Atribuição ativa (1=ativo)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'is_active';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Data de início da vigência', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'valid_from';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Data de fim da vigência', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'valid_to';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Tipo do indicador (CARD/RANKING)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'indicator_type';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Notas e observações', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'notes';
+GO
+
+-- Validações
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Validação do peso (1=válido, 0=inválido)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'weight_validation';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Soma total dos pesos do assessor', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'total_weight';
+GO
+
+-- Controle
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Número da linha no arquivo original', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'row_number';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Hash MD5 da linha para detecção de mudanças', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'row_hash';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Flag indicando se o registro foi processado', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'is_processed';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Data do processamento', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'processing_date';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Status do processamento', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'processing_status';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Notas sobre o processamento', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'processing_notes';
 GO
 
 -- ==============================================================================
--- 8. DOCUMENTAÇÃO E COMENTÁRIOS
--- ==============================================================================
-
--- Adicionar descrição da tabela
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Tabela Bronze para armazenamento de atribuições de indicadores de performance por assessor, extraídas do Google Sheets', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments';
-GO
-
--- Adicionar descrições das colunas principais
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Identificador único da carga (auto-incremento)', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'load_id';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Código do assessor (formato AAI###)', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'cod_assessor';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Código do indicador de performance', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'indicator_code';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Tipo do indicador: CARD, GATILHO, KPI, PPI, METRICA', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'indicator_type';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Peso do indicador (0-100, apenas para tipo CARD)', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'weight';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Flag indicando se a soma dos pesos CARD = 100% para o assessor/período', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'weight_sum_valid';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Flag indicando se o indicator_code existe em performance_indicators', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'indicator_exists';
-GO
-
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Erros de validação em formato JSON', 
-    @level0type=N'SCHEMA', @level0name=N'bronze',
-    @level1type=N'TABLE', @level1name=N'performance_assignments',
-    @level2type=N'COLUMN', @level2name=N'validation_errors';
-GO
-
--- ==============================================================================
--- 9. HISTÓRICO DE MUDANÇAS
+-- 10. HISTÓRICO DE MUDANÇAS
 -- ==============================================================================
 /*
-Versão  | Data       | Autor                | Descrição
---------|------------|----------------------|--------------------------------------------
-1.0.0   | 2025-01-17 | bruno.chiaramonti   | Criação inicial da tabela
+Versão  | Data       | Autor                    | Descrição
+--------|------------|--------------------------|--------------------------------------------
+1.0.0   | 2025-01-17 | bruno.chiaramonti       | Criação inicial da tabela
 
 */
 
 -- ==============================================================================
--- 10. NOTAS E OBSERVAÇÕES
+-- 11. NOTAS E OBSERVAÇÕES
 -- ==============================================================================
 /*
 Notas importantes:
-    - Todos os campos de dados são VARCHAR(MAX) seguindo padrão Bronze
-    - A validação de tipos de dados ocorre na transformação para metadata
-    - Índices otimizados para queries de processamento pendente
-    - Campo validation_errors armazena JSON com detalhes de validação
-    - Tabela deve ser limpa periodicamente (retenção de 30 dias)
+- Esta tabela armazena dados brutos do Google Sheets sem transformações
+- Todos os campos são VARCHAR para preservar o formato original
+- Processamento para Silver deve validar e converter tipos de dados
+- Validação de pesos deve ser feita na camada Silver
+- Hash de linha usado para detectar mudanças nas atribuições
 
 Troubleshooting comum:
-    1. Erro "Cannot insert duplicate key": Verificar se load_id está como IDENTITY
-    2. Performance lenta: Verificar índices e estatísticas
-    3. JSON inválido em validation_errors: Verificar encoding UTF-8
+1. Erro de duplicação: Verificar combinação assessor/indicador duplicada
+2. Validação de pesos: Soma deve ser 100% para indicadores tipo CARD
+3. Performance: Criar estatísticas nos índices após grandes cargas
 
-Contato para dúvidas: arquitetura.dados@m7investimentos.com.br
+Contato para dúvidas: bruno.chiaramonti@multisete.com
 */
 
--- Verificar criação da tabela
-SELECT 
-    t.name AS TableName,
-    s.name AS SchemaName,
-    t.create_date,
-    t.modify_date
-FROM sys.tables t
-INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE t.name = 'performance_assignments' AND s.name = 'bronze';
+-- Confirmar criação
+PRINT 'Tabela bronze.performance_assignments criada com sucesso!';
 GO

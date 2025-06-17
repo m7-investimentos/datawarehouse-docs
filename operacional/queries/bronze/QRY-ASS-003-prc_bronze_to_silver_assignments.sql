@@ -92,11 +92,11 @@ GO
 -- ==============================================================================
 
 -- Drop procedure existente se necessário
-IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[silver].[prc_bronze_to_silver_assignments]'))
-    DROP PROCEDURE [silver].[prc_bronze_to_silver_assignments];
+IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[bronze].[prc_bronze_to_silver_assignments]'))
+    DROP PROCEDURE [bronze].[prc_bronze_to_silver_assignments];
 GO
 
-CREATE PROCEDURE [silver].[prc_bronze_to_silver_assignments]
+CREATE PROCEDURE [bronze].[prc_bronze_to_silver_assignments]
     @load_id INT = NULL,
     @validate_weights BIT = 1,
     @force_update BIT = 0,
@@ -136,6 +136,7 @@ BEGIN
             BEGIN
                 IF @debug = 1
                     PRINT 'Nenhuma carga pendente para processar.';
+                COMMIT TRANSACTION;
                 RETURN 0;
             END
         END
@@ -188,14 +189,14 @@ BEGIN
             END as indicator_weight,
             TRY_CAST(b.valid_from AS DATE) as valid_from,
             TRY_CAST(b.valid_to AS DATE) as valid_to,
-            ISNULL(b.created_by, 'ETL_SYSTEM') as created_by,
-            b.approved_by,
-            b.comments,
+            'ETL_SYSTEM' as created_by,
+            NULL as approved_by,
+            b.notes as comments,
             b.row_hash,
             b.load_id,
-            ISNULL(b.weight_sum_valid, 1) as weight_sum_valid,
+            CASE WHEN b.weight_validation = '1' THEN 1 ELSE 0 END as weight_sum_valid,
             CASE WHEN i.indicator_id IS NOT NULL THEN 1 ELSE 0 END as indicator_exists,
-            b.validation_errors
+            NULL as validation_errors
         FROM bronze.performance_assignments b
         LEFT JOIN silver.performance_indicators i 
             ON UPPER(LTRIM(RTRIM(b.indicator_code))) = i.indicator_code
@@ -392,8 +393,7 @@ BEGIN
                 @rows_updated,
                 @rows_error,
                 'SUCCESS',
-                FORMATMESSAGE('Load ID: %d | Indicadores não encontrados: %d', 
-                    @load_id, @missing_indicators)
+                FORMATMESSAGE('Load ID: %d', @load_id)
             );
         END
         
@@ -443,7 +443,7 @@ BEGIN
                 rows_updated,
                 rows_error,
                 status,
-                error_message
+                details
             )
             VALUES (
                 @procedure_name,
@@ -461,7 +461,7 @@ BEGIN
         END
         
         -- Re-throw erro
-        THROW;
+        RAISERROR('%s', 16, 1, @error_message);
         
     END CATCH
 END
@@ -472,7 +472,7 @@ GO
 -- ==============================================================================
 
 -- Conceder permissão de execução
--- GRANT EXECUTE ON [silver].[prc_bronze_to_silver_assignments] TO [etl_user];
+-- GRANT EXECUTE ON [bronze].[prc_bronze_to_silver_assignments] TO [etl_user];
 -- GO
 
 -- ==============================================================================
@@ -481,17 +481,17 @@ GO
 
 /*
 -- Teste 1: Processar última carga
-EXEC silver.prc_bronze_to_silver_assignments 
+EXEC bronze.prc_bronze_to_silver_assignments 
     @debug = 1;
 
 -- Teste 2: Processar carga específica
-EXEC silver.prc_bronze_to_silver_assignments 
+EXEC bronze.prc_bronze_to_silver_assignments 
     @load_id = 123,
     @validate_weights = 1,
     @debug = 1;
 
 -- Teste 3: Forçar atualização
-EXEC silver.prc_bronze_to_silver_assignments 
+EXEC bronze.prc_bronze_to_silver_assignments 
     @force_update = 1,
     @debug = 1;
 

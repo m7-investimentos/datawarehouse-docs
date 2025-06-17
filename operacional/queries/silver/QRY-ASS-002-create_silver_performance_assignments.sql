@@ -205,7 +205,7 @@ AS
 WITH AssignmentsSummary AS (
     SELECT 
         a.cod_assessor,
-        i.indicator_type,
+        i.category,
         SUM(a.indicator_weight) as total_weight,
         COUNT(*) as indicator_count,
         STRING_AGG(CAST(i.indicator_code AS NVARCHAR(MAX)), ', ') 
@@ -215,18 +215,17 @@ WITH AssignmentsSummary AS (
     WHERE a.is_active = 1
       AND a.valid_to IS NULL
       AND GETDATE() >= a.valid_from
-    GROUP BY a.cod_assessor, i.indicator_type
+    GROUP BY a.cod_assessor, i.category
 )
 SELECT 
     cod_assessor,
-    indicator_type,
+    category,
     total_weight,
     indicator_count,
     indicators,
     CASE 
-        WHEN indicator_type = 'CARD' AND ABS(total_weight - 100.00) < 0.01 THEN 'VÁLIDO'
-        WHEN indicator_type = 'CARD' THEN 'INVÁLIDO - Soma: ' + CAST(total_weight AS VARCHAR(10))
-        ELSE 'N/A'
+        WHEN ABS(total_weight - 100.00) < 0.01 THEN 'VÁLIDO'
+        ELSE 'INVÁLIDO - Soma: ' + CAST(total_weight AS VARCHAR(10))
     END as weight_validation
 FROM AssignmentsSummary;
 GO

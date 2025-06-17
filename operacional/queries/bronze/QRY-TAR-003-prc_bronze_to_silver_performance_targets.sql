@@ -101,15 +101,15 @@ SET QUOTED_IDENTIFIER ON;
 GO
 
 -- Dropar procedure se existir
-IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[silver].[prc_bronze_to_silver_performance_targets]') AND type in (N'P', N'PC'))
-    DROP PROCEDURE [silver].[prc_bronze_to_silver_performance_targets];
+IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[bronze].[prc_bronze_to_silver_performance_targets]') AND type in (N'P', N'PC'))
+    DROP PROCEDURE [bronze].[prc_bronze_to_silver_performance_targets];
 GO
 
 -- ==============================================================================
 -- 6. CRIAÇÃO DA PROCEDURE
 -- ==============================================================================
 
-CREATE PROCEDURE [silver].[prc_bronze_to_silver_performance_targets]
+CREATE PROCEDURE [bronze].[prc_bronze_to_silver_performance_targets]
     @target_year INT = NULL,
     @validate_completeness BIT = 1,
     @debug_mode BIT = 0
@@ -184,7 +184,7 @@ BEGIN
             SELECT 
                 cod_assessor,
                 indicator_code,
-                COUNT(DISTINCT MONTH(TRY_CAST(period_start AS DATE))) as months_count,
+                12 - COUNT(DISTINCT missing_month) as months_count,
                 STRING_AGG(
                     CAST(missing_month AS VARCHAR(2)), ','
                 ) WITHIN GROUP (ORDER BY missing_month) as missing_months
@@ -485,7 +485,7 @@ GO
 -- ==============================================================================
 
 -- Conceder permissões de execução
-GRANT EXECUTE ON [silver].[prc_bronze_to_silver_performance_targets] TO [etl_user];
+-- GRANT EXECUTE ON [bronze].[prc_bronze_to_silver_performance_targets] TO [etl_user];
 GO
 
 -- ==============================================================================
@@ -558,5 +558,5 @@ Contato para dúvidas: bruno.chiaramonti@multisete.com
 */
 
 -- Confirmar criação
-PRINT 'Procedure silver.prc_bronze_to_silver_performance_targets criada com sucesso!';
+PRINT 'Procedure bronze.prc_bronze_to_silver_performance_targets criada com sucesso!';
 GO

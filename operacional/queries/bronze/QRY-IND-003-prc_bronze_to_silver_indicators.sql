@@ -496,9 +496,9 @@ GO
 -- 7. PERMISSÕES
 -- ==============================================================================
 
--- Dar permissão de execução para role ETL
-GRANT EXECUTE ON [bronze].[prc_process_indicators_to_silver] TO [db_etl_executor];
-GO
+-- Dar permissão de execução para role ETL (descomentar e ajustar usuário quando necessário)
+-- GRANT EXECUTE ON [bronze].[prc_process_indicators_to_silver] TO [db_etl_executor];
+-- GO
 
 -- ==============================================================================
 -- 8. DOCUMENTAÇÃO
