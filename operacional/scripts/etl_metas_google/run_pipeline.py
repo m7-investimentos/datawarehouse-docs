@@ -78,7 +78,8 @@ def execute_procedure(proc_name, proc_desc):
     
     try:
         # Conectar ao banco
-        conn_str = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password}'
+        driver = os.getenv('DB_DRIVER', 'ODBC Driver 18 for SQL Server')
+        conn_str = f'DRIVER={{{driver}}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes'
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
         
