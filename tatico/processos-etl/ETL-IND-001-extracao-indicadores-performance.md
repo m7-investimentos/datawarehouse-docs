@@ -1,39 +1,40 @@
-# ETL-001-performance-indicators-extraction
+# ETL-IND-001-extracao-indicadores-performance
 
 ---
 título: Extração de Indicadores de Performance - Google Sheets para Bronze
 tipo: ETL - Processo ETL
-versão: 1.0.0
-última_atualização: 2025-01-16
-autor: arquitetura.dados@m7investimentos.com.br
+versão: 2.0.0
+última_atualização: 2025-01-18
+autor: bruno.chiaramonti@multisete.com
 aprovador: diretoria.ti@m7investimentos.com.br
 tags: [etl, performance, indicadores, google-sheets, bronze, silver]
 status: aprovado
 dependências:
   - tipo: modelo
-    ref: [MOD-001]
+    ref: [MOD-IND-001]
     repo: datawarehouse-docs
-  - tipo: planilha
-    ref: [m7_performance_indicators]
-    repo: google-sheets
+  - tipo: procedimento
+    ref: [QRY-IND-003]
+    repo: datawarehouse-docs
 ---
 
 ## 1. Objetivo
 
-Extrair dados de configuração de indicadores de performance da planilha Google Sheets `m7_performance_indicators` para a camada Bronze do Data Warehouse, permitindo posterior validação e carga na camada silver.
+Extrair dados de configuração de indicadores de performance da planilha Google Sheets `m7_performance_indicators` para a camada Bronze do Data Warehouse, preservando todos os dados originais sem transformações complexas. Este ETL é responsável apenas pela extração e carga inicial dos dados brutos, preparando-os para posterior processamento pela procedure de transformação Bronze → Silver.
 
 ## 2. Escopo e Aplicabilidade
 
 ### 2.1 Escopo
 - **Fonte de dados**: Google Sheets - m7_performance_indicators
 - **Destino**: M7Medallion.bronze.performance_indicators
-- **Volume esperado**: ~10-50 registros
+- **Volume esperado**: 10-50 registros por execução
 - **Frequência**: Sob demanda (mudanças são raras)
 
 ### 2.2 Fora de Escopo
-- Validação complexa de fórmulas SQL (feita na transformação Bronze → Silver)
-- Processamento de outras planilhas (assignments, targets)
-- Execução das fórmulas de cálculo
+- Validação complexa de fórmulas SQL (responsabilidade da procedure Bronze → Silver)
+- Processamento de outras planilhas (coberto por ETL-IND-002 e ETL-IND-003)
+- Transformações de tipo de dados (mantém VARCHAR na Bronze)
+- Execução das fórmulas de cálculo dos indicadores
 
 ## 3. Pré-requisitos e Dependências
 
@@ -41,13 +42,16 @@ Extrair dados de configuração de indicadores de performance da planilha Google
 - **Conectividade**: 
   - Google Sheets API v4 habilitada
   - Service Account com permissões de leitura
-  - Credenciais JSON armazenadas seguramente
+  - Arquivo credentials/google_sheets_api.json
+  - Conexão SQL Server via ODBC Driver 17
 - **Recursos computacionais**: Mínimos (< 1MB de dados)
 - **Software/Ferramentas**: 
   - Python 3.8+
-  - google-api-python-client
-  - pandas
-  - pyodbc ou sqlalchemy
+  - google-api-python-client==2.95.0
+  - pandas==2.0.3
+  - pyodbc==4.0.39
+  - sqlalchemy==2.0.19
+  - tenacity==8.2.2 (retry logic)
 
 ### 3.2 Negócio
 - **Aprovações necessárias**: Gestão de Performance deve aprovar mudanças
@@ -75,73 +79,99 @@ Extrair dados de configuração de indicadores de performance da planilha Google
 ### 5.1 Fontes de Dados
 
 #### Fonte: Google Sheets - m7_performance_indicators
-- **Tipo**: Google Sheets via API
+- **Tipo**: Google Sheets via API v4
 - **ID da Planilha**: `1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY`
-- **Range**: `'Página1!A:K'` (todas as colunas)
-- **Conexão**: 
-  ```python
-  # Exemplo de configuração
-  SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-  SERVICE_ACCOUNT_FILE = 'path/to/credentials.json'
-  SPREADSHEET_ID = '1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY'
-  ```
+- **Range**: `'Página1!A:K'`
+- **Colunas esperadas**: 
+  - indicator_code (Código único do indicador)
+  - indicator_name (Nome descritivo)
+  - category (Categoria: FINANCEIRO, QUALIDADE, etc.)
+  - subcategory (Subcategoria opcional)
+  - indicator_type (Tipo: CARD, RANKING)
+  - unit (Unidade: R$, %, QTD, etc.)
+  - aggregation (Método: SUM, AVG, etc.)
+  - formula (Fórmula SQL)
+  - is_inverted (1 = menor é melhor)
+  - is_active (1 = ativo)
+  - description (Descrição detalhada)
+  - notes (Observações)
+- **Formato de dados**: Valores em texto (headers na linha 1)
 
 ### 5.2 Estratégia de Extração
-- **Tipo**: Full (sempre lê toda a planilha)
-- **Controle de watermark**: timestamp de extração
-- **Paralelização**: Não aplicável (volume pequeno)
+- **Tipo**: Full Load (substitui todos os dados a cada execução)
+- **Controle de watermark**: load_timestamp no Bronze
+- **Método**: TRUNCATE + INSERT
+- **Retry**: 3 tentativas com backoff exponencial (4-60 segundos)
 
 ## 6. Processo de Transformação
 
-### 6.1 Limpeza de Dados
+### 6.1 Validações durante Extração
 | Validação | Regra | Ação se Falha |
 |-----------|-------|---------------|
-| Campos obrigatórios | indicator_code, indicator_name NOT NULL | Quarentena |
-| Formato indicator_code | UPPER_CASE, sem espaços, max 50 chars | Ajustar automático |
-| Valores boolean | is_inverted, is_active in (TRUE, FALSE, 1, 0) | Converter para BIT |
-| Category válida | IN ('FINANCEIRO', 'QUALIDADE', 'VOLUME', 'COMPORTAMENTAL', 'PROCESSO', 'GATILHO') | Log warning |
-| Unit válida | IN ('R$', '%', 'QTD', 'SCORE', 'HORAS', 'DIAS', 'RATIO') | Log warning |
-| Aggregation válida | IN ('SUM', 'AVG', 'COUNT', 'MAX', 'MIN', 'LAST', 'CUSTOM') | Default 'CUSTOM' |
+| Campos obrigatórios | indicator_code, indicator_name NOT NULL | Rejeitar registro |
+| Código duplicado | indicator_code único na carga | Log warning |
+| Planilha vazia | Mínimo 1 registro | Abortar execução |
+| Colunas esperadas | Verificar headers | Abortar se estrutura mudou |
 
 ### 6.2 Transformações Aplicadas
 
 #### T1: Padronização de Códigos
+**Descrição**: Padroniza códigos para formato consistente
+**Lógica**:
 ```python
-def standardize_indicator_code(df):
-    df['indicator_code'] = df['indicator_code'].str.upper()
-    df['indicator_code'] = df['indicator_code'].str.replace(' ', '_')
-    df['indicator_code'] = df['indicator_code'].str.strip()
+def transform(self) -> pd.DataFrame:
+    df = self.data.copy()
+    
+    # Padronização de códigos
+    df['indicator_code'] = df['indicator_code'].str.upper().str.replace(' ', '_').str.strip()
+    
+    # Converter created_date se existir (não faz parte do Bronze)
+    if 'created_date' in df.columns:
+        df = df.drop(columns=['created_date'])
+    
     return df
 ```
+**Campos afetados**: indicator_code
 
-#### T2: Conversão de Tipos
+#### T2: Tratamento de Valores Especiais
+**Descrição**: Converte valores especiais preservando formato VARCHAR
+**Lógica**:
 ```python
-def convert_types(df):
-    # Booleanos
-    bool_map = {'TRUE': 1, 'FALSE': 0, 'true': 1, 'false': 0, '1': 1, '0': 0}
-    df['is_inverted'] = df['is_inverted'].map(bool_map).fillna(0)
-    df['is_active'] = df['is_active'].map(bool_map).fillna(1)
-    
-    # Datas
-    df['created_date'] = pd.to_datetime(df['created_date'], errors='coerce')
-    
-    # Textos
-    df['formula'] = df['formula'].fillna('')
-    df['notes'] = df['notes'].fillna('')
-    
-    return df
+# Booleanos convertidos para string '0' ou '1'
+bool_map = {'TRUE': '1', 'FALSE': '0', 'true': '1', 'false': '0', '1': '1', '0': '0', '': '0'}
+df['is_inverted'] = df.get('is_inverted', '').map(bool_map).fillna('0')
+df['is_active'] = df.get('is_active', '').map(bool_map).fillna('1')
+
+# Textos vazios e NaN
+text_columns = ['formula', 'notes', 'description']
+for col in text_columns:
+    if col in df.columns:
+        df[col] = df[col].fillna('')
+        
+# Aggregation com default
+if 'aggregation' in df.columns:
+    df['aggregation'] = df['aggregation'].fillna('CUSTOM')
 ```
+**Campos afetados**: is_inverted, is_active, formula, notes, description, aggregation
 
 #### T3: Enriquecimento de Metadados
+**Descrição**: Adiciona metadados para rastreabilidade e detecção de mudanças
+**Lógica**:
 ```python
-def add_metadata(df):
-    df['extraction_timestamp'] = datetime.now()
-    df['source_file'] = 'google_sheets:m7_performance_indicators'
-    df['row_hash'] = df.apply(lambda x: hashlib.md5(
-        ''.join(str(x[col]) for col in df.columns).encode()
-    ).hexdigest(), axis=1)
-    return df
+# Número da linha original na planilha
+df['row_number'] = range(2, len(df) + 2)  # Começa em 2 (pula header)
+
+# Hash MD5 para detectar mudanças
+hash_columns = ['indicator_code', 'indicator_name', 'category', 'unit', 
+               'aggregation', 'formula', 'is_inverted', 'is_active']
+existing_columns = [col for col in hash_columns if col in df.columns]
+
+df['row_hash'] = df[existing_columns].apply(
+    lambda x: hashlib.md5(''.join(str(x[col]) for col in existing_columns).encode()).hexdigest(),
+    axis=1
+)
 ```
+**Campos afetados**: row_number (novo), row_hash (novo)
 
 ## 7. Processo de Carga
 
@@ -150,56 +180,52 @@ def add_metadata(df):
 - **Schema.Tabela**: bronze.performance_indicators
 - **Método de carga**: TRUNCATE + INSERT (substitui tudo)
 
-### 7.2 Estrutura da Tabela Bronze
-```sql
-CREATE TABLE bronze.performance_indicators (
-    load_id INT IDENTITY(1,1) PRIMARY KEY,
-    load_timestamp DATETIME NOT NULL DEFAULT GETDATE(),
-    load_source VARCHAR(200) NOT NULL DEFAULT 'GoogleSheets:m7_performance_indicators',
-    
-    -- Campos da planilha (todos VARCHAR para aceitar qualquer entrada)
-    indicator_code VARCHAR(MAX),
-    indicator_name VARCHAR(MAX),
-    category VARCHAR(MAX),
-    unit VARCHAR(MAX),
-    aggregation VARCHAR(MAX),
-    formula VARCHAR(MAX),
-    is_inverted VARCHAR(MAX),
-    is_active VARCHAR(MAX),
-    description VARCHAR(MAX),
-    created_date VARCHAR(MAX),
-    notes VARCHAR(MAX),
-    
-    -- Metadados de controle
-    row_number INT,
-    row_hash VARCHAR(32),
-    is_processed BIT DEFAULT 0,
-    processing_date DATETIME NULL,
-    processing_status VARCHAR(50) NULL,
-    processing_notes VARCHAR(MAX) NULL
-);
-```
+### 7.2 Estratégia de Carga
+- **Modo**: Batch (carga completa)
+- **Transacional**: Sim (TRUNCATE + INSERT em transação)
+- **Rollback**: Automático em caso de erro
+- **Campos de controle adicionados**:
+  - load_id: Auto-incremento
+  - load_timestamp: Data/hora da carga
+  - load_source: Identificador da fonte
+  - is_processed: Flag para Bronze → Silver
+  - processing_date: Quando foi processado
+  - processing_status: Status do processamento
+  - processing_notes: Observações do processamento
 
 ## 8. Tratamento de Erros
 
 ### 8.1 Tipos de Erro e Ações
 | Tipo de Erro | Detecção | Ação | Notificação |
 |--------------|----------|------|-------------|
-| Google Sheets indisponível | API timeout/401/403 | Retry 3x com backoff | Email + Log |
-| Planilha alterada | Colunas faltando | Parar execução | Email urgente |
-| Código duplicado | indicator_code repetido | Log e continuar | Warning log |
-| Fórmula SQL inválida | Parsing básico | Aceitar mas marcar | Flag para revisão |
+| Google Sheets indisponível | HttpError 404/403/429 | Retry 3x com backoff exponencial | Log error |
+| Credenciais inválidas | Authentication error | Parar execução | Email admin |
+| Planilha vazia | Zero registros | Abortar carga | Log warning |
+| Código duplicado | COUNT(DISTINCT) != COUNT(*) | Continuar com warning | Log detalhado |
+| Conexão DB perdida | pyodbc.Error | Retry 1x → Falha | Log error |
+| Transação falhou | Rollback automático | Registrar em audit | Log error |
 
 ### 8.2 Processo de Retry
+- **Tentativas**: 3 para Google Sheets API
+- **Intervalo**: Exponential backoff (4, 8, 16... até 60 segundos)
+- **Timeout máximo**: 5 minutos total
+- **Implementação com tenacity**:
 ```python
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=60),
     retry=retry_if_exception_type(HttpError)
 )
-def extract_from_sheets():
-    # Código de extração
-    pass
+def extract(self) -> pd.DataFrame:
+    service = build('sheets', 'v4', credentials=self.credentials)
+    sheet = service.spreadsheets()
+    result = sheet.values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=RANGE_NAME
+    ).execute()
+    # ... resto da implementação
 ```
 
 ## 9. Monitoramento e Auditoria
@@ -213,90 +239,97 @@ def extract_from_sheets():
 | Latência API Google | < 5 seg | > 10 seg |
 
 ### 9.2 Logs
-```python
-# Formato de log
-logging.basicConfig(
-    format='[%(asctime)s] [%(levelname)s] [ETL-003] %(message)s',
-    level=logging.INFO
-)
-
-# Exemplo de uso
-logger.info(f"Iniciando extração de {SPREADSHEET_ID}")
-logger.info(f"Total de indicadores extraídos: {len(df)}")
-logger.warning(f"Indicador {code} com categoria inválida: {category}")
-```
+- **Nível de log**: INFO (DEBUG se --debug flag)
+- **Localização**: logs/ETL-IND-001_YYYYMMDD_HHMMSS.log
+- **Retenção**: 30 dias
+- **Formato**:
+  ```
+  [2025-01-17 15:10:50] [INFO] [ETL-IND-001] Iniciando extração de 1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY
+  [2025-01-17 15:10:52] [INFO] [ETL-IND-001] Extraídos 12 indicadores
+  [2025-01-17 15:10:53] [WARNING] [ETL-IND-001] Linha 5: categoria inválida 'OPERACIONAL'
+  [2025-01-17 15:10:55] [INFO] [ETL-IND-001] Carregados 12 registros no Bronze
+  ```
 
 ### 9.3 Auditoria
-```sql
--- Tabela de controle de execuções
-INSERT INTO audit.etl_executions (
-    etl_name,
-    execution_start,
-    execution_end,
-    records_read,
-    records_written,
-    records_error,
-    status,
-    details
-) VALUES (
-    'ETL-003-performance-indicators',
-    @start_time,
-    @end_time,
-    @total_read,
-    @total_written,
-    @total_error,
-    @status,
-    @execution_log
-);
-```
+- **Tabela de controle**: audit.etl_executions (se existir)
+- **Informações registradas**:
+  - etl_name: 'ETL-IND-001-performance-indicators'
+  - execution_start/end: Timestamps
+  - records_read: Total extraído do Sheets
+  - records_written: Total inserido no Bronze
+  - records_error: Registros com warning
+  - status: SUCCESS/ERROR/WARNING
+  - details: JSON com detalhes da execução
 
 ## 10. Qualidade de Dados
 
 ### 10.1 Validações Pós-Carga
 | Validação | Query/Método | Threshold | Ação se Falha |
 |-----------|--------------|-----------|---------------|
-| Códigos únicos | COUNT(DISTINCT indicator_code) = COUNT(*) | 100% | Investigar duplicatas |
-| Fórmulas não vazias | COUNT(*) WHERE formula IS NOT NULL | > 90% | Alertar gestão |
-| Categorias válidas | COUNT(*) WHERE category IN (lista) | 100% | Revisar novos valores |
-| Hash único | COUNT(DISTINCT row_hash) = COUNT(*) | 100% | Verificar mudanças |
+| Códigos únicos | SELECT COUNT(*) vs COUNT(DISTINCT indicator_code) | = | Warning se duplicados |
+| Registros carregados | COUNT(*) WHERE load_timestamp = MAX | > 0 | Investigar falha |
+| Categorias conhecidas | % registros com categoria válida | > 95% | Log novos valores |
+| Fórmulas preenchidas | % registros com formula != '' | > 90% | Notificar gestão |
 
-### 10.2 Script de Validação
-```sql
--- Executar após cada carga
-EXEC bronze.prc_validate_performance_indicators_load
-    @load_timestamp = @current_load_timestamp,
-    @expected_count = 6,
-    @raise_error = 1;
+### 10.2 Validação Pós-Carga
+```python
+def run_post_load_validation(self):
+    """Executa validações após carga no Bronze"""
+    with self.db_engine.connect() as conn:
+        # Verificar códigos únicos
+        result = conn.execute(text("""
+            SELECT COUNT(*) total, COUNT(DISTINCT indicator_code) unicos
+            FROM bronze.performance_indicators
+            WHERE load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_indicators)
+        """)).fetchone()
+        
+        if result.total != result.unicos:
+            self.logger.warning(f"Códigos duplicados detectados: {result.total - result.unicos}")
 ```
 
 ## 11. Agendamento e Triggers
 
 ### 11.1 Schedule
-- **Ferramenta**: SQL Server Agent / Airflow
-- **Frequência**: Sob demanda (triggered)
-- **Triggers**: 
-  - Manual via procedure
-  - Webhook do Google Sheets (se configurado)
-  - Antes do processamento mensal de metas
+- **Ferramenta**: Execução manual ou via orchestrador
+- **Expressão**: Não agendado (sob demanda)
+- **Timezone**: America/Sao_Paulo
+- **Dependências**: Nenhuma
 
-### 11.2 Comando de Execução Manual
-```sql
--- Executar ETL manualmente
-EXEC bronze.prc_extract_performance_indicators 
-    @force_reload = 1,
-    @debug_mode = 0;
-```
+### 11.2 Triggers e Execução
+- **Execução direta**:
+  ```bash
+  python etl_001_indicators.py
+  ```
+- **Com parâmetros**:
+  ```bash
+  python etl_001_indicators.py --debug --dry-run
+  ```
+- **Via orchestrador**:
+  ```bash
+  ./run_etl.sh  # Menu interativo
+  python run_pipeline.py 001  # Pipeline completo
+  ```
 
 ## 12. Manutenção e Operação
 
 ### 12.1 Procedimentos Operacionais
-- **Re-extração**: Executar procedure com @force_reload = 1
-- **Limpeza**: Bronze mantém últimas 10 cargas
-- **Arquivamento**: Após 90 dias, mover para bronze_archive
+- **Reprocessamento**: Script sempre faz TRUNCATE + INSERT (full reload)
+- **Limpeza de logs**: Remover arquivos > 30 dias em logs/
+- **Backup da planilha**: Download manual mensal recomendado
+- **Verificação de integridade**:
+  ```sql
+  -- Verificar última carga
+  SELECT TOP 10 * FROM bronze.performance_indicators
+  ORDER BY load_timestamp DESC;
+  ```
 
 ### 12.2 Troubleshooting Comum
 | Problema | Sintoma | Diagnóstico | Solução |
 |----------|---------|-------------|---------|
+| ModuleNotFoundError | Import error | pip list | pip install -r requirements.txt |
+| ODBC Driver error | Can't connect to DB | odbcinst -q -d | Instalar ODBC Driver 17 |
+| Planilha não encontrada | HTTP 404 | Verificar URL no navegador | Atualizar SPREADSHEET_ID |
+| Timeout na API | Request timeout | Verificar quota API | Aguardar ou aumentar timeout |
 | API limite excedido | HTTP 429 | Check quota Google | Aguardar reset |
 | Credenciais expiradas | HTTP 401 | Verificar service account | Renovar credenciais |
 | Planilha movida/deletada | HTTP 404 | Verificar ID da planilha | Atualizar configuração |
@@ -309,16 +342,19 @@ EXEC bronze.prc_extract_performance_indicators
 - **PII/PCI**: Não contém
 
 ### 13.2 Controles de Segurança
-- **Autenticação**: Service Account Google
+- **Autenticação**: Service Account com escopo readonly
 - **Criptografia em trânsito**: HTTPS/TLS 1.2+
-- **Acesso**: Read-only na planilha
-- **Auditoria**: Todos os acessos logados
+- **Criptografia em repouso**: N/A (dados não sensíveis)
+- **Credenciais**: Arquivo JSON fora do controle de versão
+- **Acesso DB**: Usuário com permissões mínimas (INSERT em bronze)
 
 ## 14. Versionamento e Mudanças
 
 ### 14.1 Controle de Versão
-- **Script Python**: `/etl/performance/etl_003_indicators.py`
-- **Stored Procedures**: Version tracking em comentários
+- **Repositório**: GitHub ProjetoAlicerce
+- **Script**: datawarehouse-docs/operacional/scripts/etl_metas_google/etl_001_indicators.py
+- **Branch strategy**: main (produção), develop (desenvolvimento)
+- **Versionamento**: Semantic versioning no header do arquivo
 
 ### 14.2 Processo de Mudança
 1. Testar em ambiente dev com planilha de teste
@@ -328,73 +364,79 @@ EXEC bronze.prc_extract_performance_indicators
 
 ## 15. Anexos
 
-### 15.1 Script Python Completo
-```python
-# /etl/performance/etl_003_indicators.py
-import pandas as pd
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-import logging
-from datetime import datetime
-import hashlib
-import pyodbc
-
-class PerformanceIndicatorsETL:
-    def __init__(self, config):
-        self.config = config
-        self.setup_logging()
-        self.setup_connections()
-    
-    def extract(self):
-        """Extrai dados do Google Sheets"""
-        # Implementação da extração
-        pass
-    
-    def transform(self):
-        """Aplica transformações necessárias"""
-        # Implementação das transformações
-        pass
-    
-    def load(self):
-        """Carrega dados no Bronze"""
-        # Implementação da carga
-        pass
-    
-    def run(self):
-        """Executa o pipeline completo"""
-        try:
-            self.extract()
-            self.transform()
-            self.load()
-            self.log_success()
-        except Exception as e:
-            self.log_error(e)
-            raise
-
-if __name__ == "__main__":
-    etl = PerformanceIndicatorsETL(config)
-    etl.run()
+### 15.1 Configuração do ETL
+```json
+// config/etl_001_config.json
+{
+    "spreadsheet_id": "1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY",
+    "range_name": "Página1!A:K",
+    "google_credentials_path": "credentials/google_sheets_api.json",
+    "database": {
+        "server": "${DB_SERVER}",
+        "database": "${DB_DATABASE}",
+        "user": "${DB_USERNAME}",
+        "password": "${DB_PASSWORD}",
+        "driver": "ODBC Driver 17 for SQL Server"
+    },
+    "validation": {
+        "min_records": 1,
+        "max_records": 100,
+        "required_fields": ["indicator_code", "indicator_name"],
+        "valid_categories": ["FINANCEIRO", "QUALIDADE", "VOLUME", "COMPORTAMENTAL", "PROCESSO", "GATILHO"],
+        "valid_units": ["R$", "%", "QTD", "SCORE", "HORAS", "DIAS", "RATIO"],
+        "valid_aggregations": ["SUM", "AVG", "COUNT", "MAX", "MIN", "LAST", "CUSTOM"]
+    }
+}
 ```
 
-### 15.2 Procedure de Carga
-```sql
-CREATE PROCEDURE bronze.prc_process_indicators_to_metadata
-AS
-BEGIN
-    -- Validar dados no bronze
-    -- Fazer merge com silver.performance_indicators
-    -- Marcar bronze como processado
-    -- Registrar auditoria
-END
+### 15.2 Exemplos de Dados
+```json
+// Exemplo de registro extraído do Google Sheets
+{
+  "indicator_code": "CAPTACAO_LIQUIDA",
+  "indicator_name": "Captação Líquida",
+  "category": "FINANCEIRO",
+  "subcategory": "",
+  "indicator_type": "CARD",
+  "unit": "R$",
+  "aggregation": "SUM",
+  "formula": "captacao_bruta - resgates",
+  "is_inverted": "0",
+  "is_active": "1",
+  "description": "Diferença entre captação bruta e resgates no período",
+  "notes": "Indicador principal de crescimento"
+}
+
+// Exemplo após transformação para Bronze
+{
+  "load_id": 1,
+  "load_timestamp": "2025-01-17 15:10:55",
+  "load_source": "GoogleSheets:1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY",
+  "indicator_code": "CAPTACAO_LIQUIDA",
+  "indicator_name": "Captação Líquida",
+  "category": "FINANCEIRO",
+  "unit": "R$",
+  "aggregation": "SUM",
+  "formula": "captacao_bruta - resgates",
+  "is_inverted": "0",
+  "is_active": "1",
+  "description": "Diferença entre captação bruta e resgates no período",
+  "notes": "Indicador principal de crescimento",
+  "row_number": 2,
+  "row_hash": "a1b2c3d4e5f6...",
+  "is_processed": 0
+}
 ```
 
 ### 15.3 Referências
-- [Google Sheets API Documentation](https://developers.google.com/sheets/api)
-- [MOD-001 - Modelo Performance Tracking]
-- [Python ETL Best Practices]
+- [Google Sheets API v4 Documentation](https://developers.google.com/sheets/api/quickstart/python)
+- [MOD-IND-001 - Modelo de Dados Performance Indicators Silver]
+- [QRY-IND-001 - DDL Bronze Performance Indicators]
+- [QRY-IND-003 - Procedure Bronze to Silver Indicators]
+- [CLAUDE.md - Diretrizes do Projeto]
 
 ---
 
-**Documento criado por**: Arquitetura de Dados M7 Investimentos  
-**Data**: 2025-01-16  
-**Revisão**: Mensal ou sob demanda
+**Documento criado por**: Bruno Chiaramonti  
+**Data**: 2025-01-18  
+**Revisão**: 2.0.0 - Atualização completa seguindo template ETL
