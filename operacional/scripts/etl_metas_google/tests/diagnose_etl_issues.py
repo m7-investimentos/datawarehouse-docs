@@ -113,7 +113,7 @@ class ETLDiagnostics:
                     
                     # Verificações específicas
                     if schema == 'bronze' and table == 'performance_assignments':
-                        required_cols = ['crm_id', 'indicator_code', 'is_processed', 'load_id']
+                        required_cols = ['codigo_assessor_crm', 'indicator_code', 'is_processed', 'load_id']
                         missing = set(required_cols) - set(columns['COLUMN_NAME'].values)
                         if missing:
                             self.issues.append(f"Colunas faltando em bronze.{table}: {missing}")

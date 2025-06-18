@@ -112,8 +112,8 @@ Extrair dados de atribuições de indicadores de performance por assessor da pla
 ### 6.1 Limpeza de Dados
 | Validação | Regra | Ação se Falha |
 |-----------|-------|---------------|
-| Campos obrigatórios | crm_id, indicator_code, indicator_type NOT NULL | Rejeitar registro |
-| Linhas vazias consecutivas | 5 ou mais linhas sem crm_id | Parar leitura |
+| Campos obrigatórios | codigo_assessor_crm, indicator_code, indicator_type NOT NULL | Rejeitar registro |
+| Linhas vazias consecutivas | 5 ou mais linhas sem codigo_assessor_crm | Parar leitura |
 | indicator_type válido | IN ('CARD', 'GATILHO', 'KPI', 'PPI', 'METRICA') | Log warning |
 | Weight para CARD | Deve ser numérico > 0 | Log warning |
 | Weight para não-CARD | Ajustar para 0.00 | Ajuste automático |
@@ -125,8 +125,8 @@ Extrair dados de atribuições de indicadores de performance por assessor da pla
 **Lógica**:
 ```python
 def standardize_assignments(self, df: pd.DataFrame) -> pd.DataFrame:
-    # Padronizar crm_id
-    df['crm_id'] = df['crm_id'].str.upper().str.strip()
+    # Padronizar codigo_assessor_crm
+    df['codigo_assessor_crm'] = df['codigo_assessor_crm'].str.upper().str.strip()
     
     # Padronizar indicator_code
     df['indicator_code'] = df['indicator_code'].str.upper().str.replace(' ', '_').str.strip()
@@ -148,7 +148,7 @@ def standardize_assignments(self, df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 ```
-**Campos afetados**: crm_id, indicator_code, indicator_type, weight
+**Campos afetados**: codigo_assessor_crm, indicator_code, indicator_type, weight
 
 #### T2: Validação de Soma de Pesos
 **Descrição**: Valida que soma dos pesos CARD = 100% por assessor/período
@@ -166,7 +166,7 @@ def validate_weights(self, df: pd.DataFrame) -> List[Dict]:
         return validation_errors
     
     # Agrupar por assessor e valid_from
-    weight_sums = card_df.groupby(['crm_id', 'valid_from'])['weight'].sum()
+    weight_sums = card_df.groupby(['codigo_assessor_crm', 'valid_from'])['weight'].sum()
     
     # Verificar somas diferentes de 100 (com tolerância de 0.01)
     invalid_weights = weight_sums[abs(weight_sums - 100.0) > 0.01]
@@ -174,7 +174,7 @@ def validate_weights(self, df: pd.DataFrame) -> List[Dict]:
     for (assessor, valid_from), total_weight in invalid_weights.items():
         validation_errors.append({
             'error_type': 'INVALID_WEIGHT_SUM',
-            'crm_id': assessor,
+            'codigo_assessor_crm': assessor,
             'valid_from': valid_from,
             'total_weight': float(total_weight),
             'expected': 100.0,
@@ -205,7 +205,7 @@ def validate_relationships(self, df: pd.DataFrame, indicators_df: pd.DataFrame) 
     for _, row in invalid_codes.iterrows():
         validation_errors.append({
             'error_type': 'INVALID_INDICATOR_CODE',
-            'crm_id': row['crm_id'],
+            'codigo_assessor_crm': row['codigo_assessor_crm'],
             'indicator_code': row['indicator_code'],
             'message': 'Código não existe em performance_indicators'
         })
@@ -222,7 +222,7 @@ def validate_relationships(self, df: pd.DataFrame, indicators_df: pd.DataFrame) 
 df['row_number'] = range(2, len(df) + 2)  # Começa em 2 (pula header)
 
 # Hash MD5 para detectar mudanças
-hash_columns = ['crm_id', 'indicator_code', 'valid_from']
+hash_columns = ['codigo_assessor_crm', 'indicator_code', 'valid_from']
 df['row_hash'] = df[hash_columns].apply(
     lambda x: hashlib.md5('_'.join(str(x[col]) for col in hash_columns).encode()).hexdigest(),
     axis=1
@@ -238,7 +238,7 @@ df['indicator_exists'] = 1  # Default: existe
 # Marcar registros com erro de peso
 for error in self.validation_errors:
     if error['error_type'] == 'INVALID_WEIGHT_SUM':
-        mask = (df['crm_id'] == error['crm_id']) & \
+        mask = (df['codigo_assessor_crm'] == error['codigo_assessor_crm']) & \
                (df['valid_from'] == error['valid_from']) & \
                (df['indicator_type'] == 'CARD')
         df.loc[mask, 'weight_sum_valid'] = 0
@@ -345,7 +345,7 @@ def extract(self) -> pd.DataFrame:
 ### 10.1 Validações Pós-Carga
 | Validação | Query/Método | Threshold | Ação se Falha |
 |-----------|--------------|-----------|---------------|
-| Assessores únicos carregados | SELECT COUNT(DISTINCT crm_id) | > 30 | Verificar filtros |
+| Assessores únicos carregados | SELECT COUNT(DISTINCT codigo_assessor_crm) | > 30 | Verificar filtros |
 | Assessores com peso inválido | % com soma ≠ 100 | = 0 | Notificar gestão |
 | Indicadores órfãos | % sem correspondência | < 5% | Executar ETL-IND-001 |
 | Registros processados | COUNT(*) | > 50 | Investigar fonte |
@@ -357,7 +357,7 @@ def post_load_validations(self):
     with self.db_engine.connect() as conn:
         # Verificar assessores únicos
         result = conn.execute(text("""
-            SELECT COUNT(DISTINCT crm_id) as assessores_unicos
+            SELECT COUNT(DISTINCT codigo_assessor_crm) as assessores_unicos
             FROM bronze.performance_assignments
             WHERE load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_assignments)
         """)).fetchone()
@@ -368,14 +368,14 @@ def post_load_validations(self):
         result = conn.execute(text("""
             WITH weight_check AS (
                 SELECT 
-                    crm_id,
+                    codigo_assessor_crm,
                     valid_from,
                     SUM(CAST(weight AS DECIMAL(5,2))) as total_weight
                 FROM bronze.performance_assignments
                 WHERE indicator_type = 'CARD'
                   AND (valid_to IS NULL OR valid_to = '')
                   AND load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_assignments)
-                GROUP BY crm_id, valid_from
+                GROUP BY codigo_assessor_crm, valid_from
             )
             SELECT COUNT(*) as assessores_com_erro
             FROM weight_check
@@ -432,10 +432,10 @@ python run_full_pipeline.py
   ORDER BY load_timestamp DESC;
   
   -- Verificar pesos por assessor
-  SELECT crm_id, SUM(CAST(weight AS DECIMAL(5,2))) as total
+  SELECT codigo_assessor_crm, SUM(CAST(weight AS DECIMAL(5,2))) as total
   FROM bronze.performance_assignments
   WHERE indicator_type = 'CARD' AND is_processed = 0
-  GROUP BY crm_id;
+  GROUP BY codigo_assessor_crm;
   ```
 
 ### 12.2 Troubleshooting Comum
@@ -498,7 +498,7 @@ python run_full_pipeline.py
     "validation": {
         "min_records": 50,
         "max_records": 1000,
-        "required_fields": ["crm_id", "indicator_code", "indicator_type"],
+        "required_fields": ["codigo_assessor_crm", "indicator_code", "indicator_type"],
         "valid_indicator_types": ["CARD", "GATILHO", "KPI", "PPI", "METRICA"],
         "max_weight_deviation": 0.01
     },
@@ -514,7 +514,7 @@ python run_full_pipeline.py
 ```json
 // Exemplo de registro extraído do Google Sheets
 {
-  "crm_id": "AAI001",
+  "codigo_assessor_crm": "AAI001",
   "nome_assessor": "João Silva",
   "indicator_code": "CAPTACAO_LIQUIDA",
   "indicator_type": "CARD",
@@ -531,7 +531,7 @@ python run_full_pipeline.py
   "load_id": 123,
   "load_timestamp": "2025-01-17 15:10:55",
   "load_source": "GoogleSheets:1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww",
-  "crm_id": "AAI001",
+  "codigo_assessor_crm": "AAI001",
   "nome_assessor": "João Silva",
   "indicator_code": "CAPTACAO_LIQUIDA",
   "indicator_type": "CARD",
@@ -553,7 +553,7 @@ python run_full_pipeline.py
 // Exemplo de erro de validação
 {
   "error_type": "INVALID_WEIGHT_SUM",
-  "crm_id": "AAI002",
+  "codigo_assessor_crm": "AAI002",
   "valid_from": "2025-01-01",
   "total_weight": 95.0,
   "expected": 100.0,
@@ -574,7 +574,7 @@ def load(self, dry_run: bool = False) -> int:
     load_data['load_source'] = f'GoogleSheets:{SPREADSHEET_ID}'
     
     # Converter para string (Bronze preserva formato original)
-    string_columns = ['crm_id', 'nome_assessor', 'indicator_code', 
+    string_columns = ['codigo_assessor_crm', 'nome_assessor', 'indicator_code', 
                      'indicator_type', 'weight', 'valid_from', 'valid_to']
     for col in string_columns:
         if col in load_data.columns:

@@ -78,7 +78,7 @@ class ETLDataVerifier:
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN is_processed = 1 THEN 1 ELSE 0 END) as processed,
-                COUNT(DISTINCT crm_id) as assessors,
+                COUNT(DISTINCT codigo_assessor_crm) as assessors,
                 COUNT(DISTINCT indicator_code) as indicators,
                 SUM(CASE WHEN processing_status = 'ERROR' THEN 1 ELSE 0 END) as errors
             FROM bronze.performance_assignments
@@ -97,7 +97,7 @@ class ETLDataVerifier:
         query = """
             SELECT 
                 COUNT(*) as total,
-                COUNT(DISTINCT crm_id) as assessors,
+                COUNT(DISTINCT codigo_assessor_crm) as assessors,
                 COUNT(DISTINCT indicator_id) as indicators
             FROM silver.performance_assignments
             WHERE is_active = 1
@@ -123,15 +123,15 @@ class ETLDataVerifier:
             # Top assessores por número de indicadores
             query = """
                 SELECT TOP 10
-                    a.crm_id,
+                    a.codigo_assessor_crm,
                     p.nome_pessoa,
                     COUNT(DISTINCT a.indicator_id) as num_indicators,
                     SUM(CASE WHEN i.category = 'CARD' THEN a.indicator_weight ELSE 0 END) as total_weight
                 FROM silver.performance_assignments a
-                LEFT JOIN silver.dim_pessoas p ON a.crm_id = p.crm_id
+                LEFT JOIN silver.dim_pessoas p ON a.codigo_assessor_crm = p.codigo_assessor_crm
                 INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
                 WHERE a.is_active = 1
-                GROUP BY a.crm_id, p.nome_pessoa
+                GROUP BY a.codigo_assessor_crm, p.nome_pessoa
                 ORDER BY COUNT(DISTINCT a.indicator_id) DESC
             """
             details = self.db.execute_dataframe(query)
@@ -144,7 +144,7 @@ class ETLDataVerifier:
                 SELECT 
                     i.category,
                     COUNT(*) as assignments,
-                    COUNT(DISTINCT a.crm_id) as assessors
+                    COUNT(DISTINCT a.codigo_assessor_crm) as assessors
                 FROM silver.performance_assignments a
                 INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
                 WHERE a.is_active = 1
@@ -173,7 +173,7 @@ class ETLDataVerifier:
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN is_processed = 1 THEN 1 ELSE 0 END) as processed,
-                COUNT(DISTINCT crm_id) as assessors,
+                COUNT(DISTINCT codigo_assessor_crm) as assessors,
                 COUNT(DISTINCT period_start) as periods
             FROM bronze.performance_targets
         """
@@ -192,7 +192,7 @@ class ETLDataVerifier:
                 query = """
                     SELECT 
                         COUNT(*) as total,
-                        COUNT(DISTINCT crm_id) as assessors
+                        COUNT(DISTINCT codigo_assessor_crm) as assessors
                     FROM silver.performance_targets
                     WHERE is_active = 1
                 """
@@ -216,7 +216,7 @@ class ETLDataVerifier:
         
         # Verificar NULLs críticos
         critical_checks = [
-            ('bronze', 'performance_assignments', 'crm_id'),
+            ('bronze', 'performance_assignments', 'codigo_assessor_crm'),
             ('bronze', 'performance_assignments', 'indicator_code'),
             ('silver', 'performance_assignments', 'valid_from')
         ]
@@ -239,7 +239,7 @@ class ETLDataVerifier:
         
         # Verificar duplicatas
         dup_check = analyzer.find_duplicates('bronze', 'performance_assignments', 
-                                           ['crm_id', 'indicator_code', 'valid_from'])
+                                           ['codigo_assessor_crm', 'indicator_code', 'valid_from'])
         
         if not dup_check.empty:
             self.logger.warning(f"\n  ⚠️  {len(dup_check)} combinações duplicadas encontradas")

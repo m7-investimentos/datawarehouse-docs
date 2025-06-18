@@ -68,7 +68,7 @@ class ComprehensiveAnalyzer:
         if not invalid_indicators.empty:
             self.logger.warning(f"  ⚠️  {len(invalid_indicators)} indicadores não encontrados:")
             for _, row in invalid_indicators.iterrows():
-                self.logger.warning(f"    - {row['indicator_code']} (CRM: {row['crm_id']})")
+                self.logger.warning(f"    - {row['indicator_code']} (CRM: {row['codigo_assessor_crm']})")
         
         # Verificar pesos
         query = """
@@ -108,7 +108,7 @@ class ComprehensiveAnalyzer:
             SELECT 
                 target_type,
                 COUNT(*) as count,
-                COUNT(DISTINCT crm_id) as assessores
+                COUNT(DISTINCT codigo_assessor_crm) as assessores
             FROM bronze.performance_targets
             WHERE is_processed = 0
             GROUP BY target_type
@@ -148,7 +148,7 @@ class ComprehensiveAnalyzer:
                     if not invalid_weights.empty:
                         self.logger.warning(f"  ⚠️  {len(invalid_weights)} assessores com peso inválido:")
                         for _, row in invalid_weights.head(5).iterrows():
-                            self.logger.warning(f"    - CRM {row['crm_id']}: {row['total_weight']:.2f}%")
+                            self.logger.warning(f"    - CRM {row['codigo_assessor_crm']}: {row['total_weight']:.2f}%")
                     else:
                         self.logger.info("  ✓ Todos os pesos estão válidos (100%)")
             else:
@@ -202,8 +202,8 @@ class ComprehensiveAnalyzer:
         # Verificar sincronização Bronze/Silver
         flows = [
             ('performance_indicators', 'indicator_code'),
-            ('performance_assignments', 'crm_id'),
-            ('performance_targets', 'crm_id')
+            ('performance_assignments', 'codigo_assessor_crm'),
+            ('performance_targets', 'codigo_assessor_crm')
         ]
         
         for table, key_col in flows:

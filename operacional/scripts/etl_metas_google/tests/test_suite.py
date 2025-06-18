@@ -74,7 +74,7 @@ class TestTableStructures(unittest.TestCase):
         """Verifica colunas obrigatórias"""
         # Bronze assignments
         columns = self.checker.get_table_columns('bronze', 'performance_assignments')
-        required = ['crm_id', 'indicator_code', 'is_processed', 'load_id']
+        required = ['codigo_assessor_crm', 'indicator_code', 'is_processed', 'load_id']
         
         for col in required:
             with self.subTest(column=col):
@@ -101,7 +101,7 @@ class TestDataValidation(unittest.TestCase):
         if not invalid_weights.empty:
             for _, row in invalid_weights.iterrows():
                 self.assertNotAlmostEqual(row['total_weight'], 100.0, places=2,
-                    msg=f"CRM {row['crm_id']} deveria ter peso inválido")
+                    msg=f"CRM {row['codigo_assessor_crm']} deveria ter peso inválido")
     
     def test_indicator_validation(self):
         """Testa validação de indicadores"""

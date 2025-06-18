@@ -410,7 +410,7 @@ class PerformanceTargetsETL:
         validation_errors = []
         
         # Agrupar por assessor e indicador
-        grouped = df.groupby(['crm_id', 'indicator_code'])
+        grouped = df.groupby(['codigo_assessor_crm', 'indicator_code'])
         
         for (assessor, indicator), group in grouped:
             # Extrair meses únicos
@@ -420,7 +420,7 @@ class PerformanceTargetsETL:
             if missing_months:
                 validation_errors.append({
                     'error_type': 'INCOMPLETE_YEAR',
-                    'crm_id': assessor,
+                    'codigo_assessor_crm': assessor,
                     'indicator_code': indicator,
                     'missing_months': missing_months,
                     'months_found': len(months)
@@ -430,7 +430,7 @@ class PerformanceTargetsETL:
             self.logger.warning(f"{len(validation_errors)} combinações assessor/indicador com ano incompleto")
             # Log de alguns exemplos
             for error in validation_errors[:5]:
-                self.logger.debug(f"  - {error['crm_id']}/{error['indicator_code']}: faltam meses {error['missing_months']}")
+                self.logger.debug(f"  - {error['codigo_assessor_crm']}/{error['indicator_code']}: faltam meses {error['missing_months']}")
         
         return validation_errors
         
@@ -454,7 +454,7 @@ class PerformanceTargetsETL:
         # Hash por registro único
         df['row_hash'] = df.apply(
             lambda x: hashlib.md5(
-                f"{x['crm_id']}_{x['indicator_code']}_{x['period_start'].strftime('%Y-%m') if pd.notna(x['period_start']) else ''}".encode()
+                f"{x['codigo_assessor_crm']}_{x['indicator_code']}_{x['period_start'].strftime('%Y-%m') if pd.notna(x['period_start']) else ''}".encode()
             ).hexdigest(), 
             axis=1
         )
@@ -488,7 +488,7 @@ class PerformanceTargetsETL:
             errors['warning'].append(f"Volume alto: {len(df)} registros (esperado: <{MAX_EXPECTED_RECORDS})")
         
         # Validação 2: Assessores únicos
-        unique_assessors = df['crm_id'].nunique()
+        unique_assessors = df['codigo_assessor_crm'].nunique()
         if unique_assessors < 20:
             errors['warning'].append(f"Poucos assessores: {unique_assessors}")
         
@@ -524,7 +524,7 @@ class PerformanceTargetsETL:
         self.validation_errors = []
         
         # Validar campos obrigatórios
-        required_fields = ['crm_id', 'indicator_code', 'period_start', 'target_value']
+        required_fields = ['codigo_assessor_crm', 'indicator_code', 'period_start', 'target_value']
         for field in required_fields:
             if field not in self.data.columns:
                 self.validation_errors.append({
@@ -654,7 +654,7 @@ class PerformanceTargetsETL:
                     error_dict = {}
                     for error in self.validation_errors:
                         if error['error_type'] == 'INCOMPLETE_YEAR':
-                            key = f"{error['crm_id']}_{error['indicator_code']}"
+                            key = f"{error['codigo_assessor_crm']}_{error['indicator_code']}"
                             if key not in error_dict:
                                 error_dict[key] = []
                             error_dict[key].append(error)
@@ -662,8 +662,8 @@ class PerformanceTargetsETL:
                     # Aplicar erros às linhas correspondentes
                     load_data['validation_errors'] = load_data.apply(
                         lambda x: json.dumps(
-                            error_dict.get(f"{x['crm_id']}_{x['indicator_code']}", [])
-                        ) if f"{x['crm_id']}_{x['indicator_code']}" in error_dict else None,
+                            error_dict.get(f"{x['codigo_assessor_crm']}_{x['indicator_code']}", [])
+                        ) if f"{x['codigo_assessor_crm']}_{x['indicator_code']}" in error_dict else None,
                         axis=1
                     )
                 else:
@@ -674,7 +674,7 @@ class PerformanceTargetsETL:
                 load_data['period_end'] = load_data['period_end'].dt.strftime('%Y-%m-%d')
                 
                 # Converter tudo para string para Bronze (exceto campos numéricos específicos)
-                string_columns = ['crm_id', 'nome_assessor', 'indicator_code', 
+                string_columns = ['codigo_assessor_crm', 'nome_assessor', 'indicator_code', 
                                 'period_type', 'period_start', 'period_end']
                 
                 for col in string_columns:
@@ -690,7 +690,7 @@ class PerformanceTargetsETL:
                 # Reorganizar colunas na ordem correta (excluindo load_id que é IDENTITY)
                 columns_order = [
                     'load_timestamp', 'load_source',
-                    'crm_id', 'nome_assessor', 'indicator_code',
+                    'codigo_assessor_crm', 'nome_assessor', 'indicator_code',
                     'period_type', 'period_start', 'period_end',
                     'target_value', 'stretch_value', 'minimum_value',
                     'row_number', 'row_hash', 'target_year', 'target_quarter',
@@ -830,9 +830,9 @@ class PerformanceTargetsETL:
                 result = conn.execute(text(f"""
                     SELECT 
                         COUNT(*) as total_records,
-                        COUNT(DISTINCT crm_id) as unique_assessors,
+                        COUNT(DISTINCT codigo_assessor_crm) as unique_assessors,
                         COUNT(DISTINCT indicator_code) as unique_indicators,
-                        COUNT(DISTINCT CONCAT(crm_id, '_', indicator_code)) as unique_combinations
+                        COUNT(DISTINCT CONCAT(codigo_assessor_crm, '_', indicator_code)) as unique_combinations
                     FROM bronze.performance_targets
                     WHERE target_year = {target_year}
                     AND load_timestamp = (
@@ -851,13 +851,13 @@ class PerformanceTargetsETL:
                 result = conn.execute(text(f"""
                     WITH monthly_coverage AS (
                         SELECT 
-                            crm_id,
+                            codigo_assessor_crm,
                             indicator_code,
                             COUNT(DISTINCT MONTH(CAST(period_start AS DATE))) as months_count
                         FROM bronze.performance_targets
                         WHERE target_year = {target_year}
                         AND is_processed = 0
-                        GROUP BY crm_id, indicator_code
+                        GROUP BY codigo_assessor_crm, indicator_code
                     )
                     SELECT 
                         COUNT(*) as total_combinations,
@@ -905,7 +905,7 @@ class PerformanceTargetsETL:
         report = {
             'summary': {
                 'total_records': len(df),
-                'unique_assessors': df['crm_id'].nunique(),
+                'unique_assessors': df['codigo_assessor_crm'].nunique(),
                 'unique_indicators': df['indicator_code'].nunique(),
                 'date_range': f"{df['period_start'].min()} to {df['period_start'].max()}",
                 'extraction_time': datetime.now().isoformat()

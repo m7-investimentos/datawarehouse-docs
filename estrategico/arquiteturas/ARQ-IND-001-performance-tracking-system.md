@@ -177,16 +177,16 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 ### 5.1 Modelo Conceitual de Dados - Camadas Silver
 
 ```
-┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
-│   Indicators    │         │   Assignments   │         │    Targets      │
-├─────────────────┤         ├─────────────────┤         ├─────────────────┤
-│ • Code          │◀────────│ • CRM ID        │────────▶│ • CRM ID        │
-│ • Name          │         │ • Indicator ID  │         │ • Indicator ID  │
-│ • Category      │         │ • Weight (%)    │         │ • Period        │
-│ • Formula SQL   │         │ • Valid From/To │         │ • Target Value  │
-│ • Aggregation   │         │ • Type (CARD,   │         │ • Stretch/Min   │
-│ • Is Inverted   │         │   GATILHO, KPI) │         │                 │
-└─────────────────┘         └─────────────────┘         └─────────────────┘
+┌───────────────────────┐       ┌───────────────────────┐       ┌───────────────────────┐
+│      Indicators       │       │      Assignments      │       │        Targets        │
+├───────────────────────┤       ├───────────────────────┤       ├───────────────────────┤
+│ • Code                │◀──────│ • Código Assessor CRM │──────▶│ • Código Assessor CRM │
+│ • Name                │       │ • Indicator ID        │       │ • Indicator ID        │
+│ • Category            │       │ • Weight (%)          │       │ • Period              │
+│ • Formula SQL         │       │ • Valid From/To       │       │ • Target Value        │
+│ • Aggregation         │       │ • Type (CARD,         │       │ • Stretch/Min         │
+│ • Is Inverted         │       │   GATILHO, KPI)       │       │                       │
+└───────────────────────┘       └───────────────────────┘       └───────────────────────┘
 ```
 
 ### 5.2 Estratégia da Camada Gold - Processamento Dinâmico
@@ -224,7 +224,7 @@ gold.card_metas (Entity-Attribute-Value)
 ├─ period_start
 ├─ period_end
 ├─ entity_type ('ASSESSOR')
-├─ entity_id (crm_id)
+├─ entity_id (codigo_assessor_crm)
 ├─ attribute_type ('INDICATOR')
 ├─ attribute_code (indicator_code)
 ├─ attribute_name (indicator_name)
@@ -396,15 +396,15 @@ A procedure `prc_process_performance_to_gold` implementa um motor de execução 
 ### 5.6 Diagrama de Processamento Gold End-to-End
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      EXEMPLO: Pessoa Hugo Silva - Jan/2025              │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                      EXEMPLO: Pessoa Hugo Silva - Jan/2025           │
+└──────────────────────────────────────────────────────────────────────┘
 
 SILVER TABLES                           GOLD PROCESSING
 ┌──────────────────┐
 │ Indicators       │     ┌─────────────────────────────────────────────┐
 │ ┌──────────────┐ │     │ 1. LOOP: Para cada pessoa + período         │
-│ │ CAPT_LIQ     │ │────▶│    Hugo Silva (12345) + Jan/2025           │
+│ │ CAPT_LIQ     │ │────▶│    Hugo Silva (12345) + Jan/2025            │
 │ │ Formula: ... │ │     └─────────────────────────┬───────────────────┘
 │ │ Method: SUM  │ │                               │
 │ └──────────────┘ │     ┌─────────────────────────▼───────────────────┐
@@ -422,7 +422,7 @@ SILVER TABLES                           GOLD PROCESSING
 │ Targets          │     │ CAPT_LIQ:                                   │  
 │ ┌──────────────┐ │────▶│   SQL: SELECT captacao_liquida_total        │
 │ │ 12345        │ │     │        FROM gold.captacao_liquida_assessor  │
-│ │ Jan: 500K    │ │     │        WHERE crm_id = '12345'               │
+│ │ Jan: 500K    │ │     │        WHERE codigo_assessor_crm = '12345'  │
 │ └──────────────┘ │     │        AND data BETWEEN '2025-01-01'        │
 └──────────────────┘     │                     AND '2025-01-31'        │
                          │   Result: 450.000                           │
@@ -495,7 +495,7 @@ Para cada combinação Pessoa + Indicador + Período:
 2. CONSTRUIR QUERY DINÂMICA
    ├─> SELECT {formula}
    ├─> FROM {tabela_origem}
-   ├─> WHERE cod_assessor = @crm_id
+   ├─> WHERE codigo_assessor_crm = @codigo_assessor_crm
    └─> AND data_ref BETWEEN @period_start AND @period_end
 
 3. EXECUTAR E PROCESSAR
@@ -766,7 +766,7 @@ Para cada combinação Pessoa + Indicador + Período:
 Indicador: CAPT_LIQ
 Formula: captacao_liquida_total
 Tabela: gold.captacao_liquida_assessor
-Execução: SELECT captacao_liquida_total WHERE crm_id = @pessoa
+Execução: SELECT captacao_liquida_total WHERE codigo_assessor_crm = @pessoa
 ```
 
 **Padrão 2: Agregação com Filtro**

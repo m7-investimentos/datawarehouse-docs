@@ -51,7 +51,7 @@ Tabela criada: bronze.performance_targets
 
 Colunas principais:
 - load_id: Identificador único do registro
-- crm_id: Código do assessor
+- codigo_assessor_crm: Código do assessor no CRM
 - indicator_code: Código do indicador
 - period_start/end: Período da meta
 - target_value: Valor da meta
@@ -107,7 +107,7 @@ CREATE TABLE [bronze].[performance_targets](
     [load_source] [varchar](200) NOT NULL DEFAULT ('GoogleSheets:performance_targets'),
     
     -- Campos da planilha (todos VARCHAR(MAX) para Bronze)
-    [crm_id] [varchar](max) NULL,
+    [codigo_assessor_crm] [varchar](max) NULL,
     [nome_assessor] [varchar](max) NULL,
     [indicator_code] [varchar](max) NULL,
     [period_type] [varchar](max) NULL,
@@ -199,10 +199,10 @@ GO
 -- Campos de negócio
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
-    @value=N'ID do CRM do assessor', 
+    @value=N'Código do assessor no CRM', 
     @level0type=N'SCHEMA',@level0name=N'bronze', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
-    @level2type=N'COLUMN',@level2name=N'crm_id';
+    @level2type=N'COLUMN',@level2name=N'codigo_assessor_crm';
 GO
 
 EXEC sys.sp_addextendedproperty 
@@ -390,7 +390,7 @@ ORDER BY i.name;
 -- Query para verificar volume após carga
 SELECT 
     COUNT(*) as total_records,
-    COUNT(DISTINCT crm_id) as unique_assessors,
+    COUNT(DISTINCT codigo_assessor_crm) as unique_assessors,
     COUNT(DISTINCT indicator_code) as unique_indicators,
     MIN(CAST(period_start AS DATE)) as min_date,
     MAX(CAST(period_start AS DATE)) as max_date

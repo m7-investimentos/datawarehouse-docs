@@ -115,7 +115,7 @@ Extrair dados de metas mensais de performance por assessor e indicador da planil
 | Validação | Regra | Ação se Falha |
 |-----------|-------|---------------|
 | Campos obrigatórios | Todos campos NOT NULL | Quarentena |
-| Formato crm_id | Padrão AAI + números | Log warning + aceitar |
+| Formato codigo_assessor_crm | Padrão AAI + números | Log warning + aceitar |
 | Period_type | Sempre 'MENSAL' | Ajustar automaticamente |
 | Period_start formato | YYYY-MM-01 (primeiro dia) | Ajustar para dia 01 |
 | Period_end formato | Último dia do mês | Calcular automaticamente |
@@ -183,7 +183,7 @@ def validate_annual_completeness(df):
     validation_errors = []
     
     # Agrupar por assessor e indicador
-    grouped = df.groupby(['crm_id', 'indicator_code'])
+    grouped = df.groupby(['codigo_assessor_crm', 'indicator_code'])
     
     for (assessor, indicator), group in grouped:
         months = group['period_start'].dt.month.unique()
@@ -192,7 +192,7 @@ def validate_annual_completeness(df):
         if missing_months:
             validation_errors.append({
                 'error_type': 'INCOMPLETE_YEAR',
-                'crm_id': assessor,
+                'codigo_assessor_crm': assessor,
                 'indicator_code': indicator,
                 'missing_months': sorted(missing_months),
                 'months_found': len(months)
@@ -210,7 +210,7 @@ def add_metadata(df):
     
     # Hash por registro único
     df['row_hash'] = df.apply(lambda x: hashlib.md5(
-        f"{x['crm_id']}_{x['indicator_code']}_{x['period_start'].strftime('%Y-%m')}".encode()
+        f"{x['codigo_assessor_crm']}_{x['indicator_code']}_{x['period_start'].strftime('%Y-%m')}".encode()
     ).hexdigest(), axis=1)
     
     # Adicionar ano de referência
@@ -239,7 +239,7 @@ CREATE TABLE bronze.performance_targets (
     load_source VARCHAR(200) NOT NULL DEFAULT 'GoogleSheets:m7_performance_targets',
     
     -- Campos da planilha
-    crm_id VARCHAR(MAX),
+    codigo_assessor_crm VARCHAR(MAX),
     nome_assessor VARCHAR(MAX),
     indicator_code VARCHAR(MAX),
     period_type VARCHAR(MAX),
@@ -267,11 +267,11 @@ CREATE TABLE bronze.performance_targets (
 
 -- Índices para performance com volume alto
 CREATE INDEX IX_bronze_targets_year 
-ON bronze.performance_targets (target_year, crm_id, indicator_code)
+ON bronze.performance_targets (target_year, codigo_assessor_crm, indicator_code)
 WHERE is_processed = 0;
 
 CREATE INDEX IX_bronze_targets_lookup
-ON bronze.performance_targets (crm_id, indicator_code, period_start)
+ON bronze.performance_targets (codigo_assessor_crm, indicator_code, period_start)
 INCLUDE (target_value, stretch_value, minimum_value);
 ```
 
@@ -332,7 +332,7 @@ def validate_batch(df):
         errors['warning'].append(f"Volume alto: {len(df)} registros")
     
     # Validação 2: Assessores únicos
-    unique_assessors = df['crm_id'].nunique()
+    unique_assessors = df['codigo_assessor_crm'].nunique()
     if unique_assessors < 20:
         errors['warning'].append(f"Poucos assessores: {unique_assessors}")
     
@@ -374,9 +374,9 @@ logger.info(f"Planilha: {SPREADSHEET_ID}")
 # Durante processamento
 logger.info(f"Registros extraídos: {len(df)}")
 logger.info(f"Período: {df['period_start'].min()} a {df['period_start'].max()}")
-logger.info(f"Assessores únicos: {df['crm_id'].nunique()}")
+logger.info(f"Assessores únicos: {df['codigo_assessor_crm'].nunique()}")
 logger.info(f"Indicadores únicos: {df['indicator_code'].nunique()}")
-logger.info(f"Combinações assessor/indicador: {df.groupby(['crm_id', 'indicator_code']).ngroups}")
+logger.info(f"Combinações assessor/indicador: {df.groupby(['codigo_assessor_crm', 'indicator_code']).ngroups}")
 
 # Estatísticas de valores
 logger.info("=== Estatísticas de Metas ===")
@@ -407,7 +407,7 @@ BEGIN
     -- Resumo geral
     SELECT 
         'RESUMO GERAL' as section,
-        COUNT(DISTINCT crm_id) as total_assessores,
+        COUNT(DISTINCT codigo_assessor_crm) as total_assessores,
         COUNT(DISTINCT indicator_code) as total_indicadores,
         COUNT(*) as total_metas,
         SUM(CASE WHEN target_logic_valid = 0 THEN 1 ELSE 0 END) as metas_invalidas,
@@ -419,7 +419,7 @@ BEGIN
     SELECT 
         'POR INDICADOR' as section,
         indicator_code,
-        COUNT(DISTINCT crm_id) as assessores,
+        COUNT(DISTINCT codigo_assessor_crm) as assessores,
         COUNT(*) as metas,
         AVG(CAST(target_value AS FLOAT)) as target_medio,
         MIN(CAST(target_value AS FLOAT)) as target_min,
@@ -432,14 +432,14 @@ BEGIN
     -- Validações críticas
     SELECT 
         'VALIDAÇÕES CRÍTICAS' as section,
-        crm_id,
+        codigo_assessor_crm,
         indicator_code,
         COUNT(*) as meses_definidos,
         12 - COUNT(*) as meses_faltantes,
         STRING_AGG(MONTH(CAST(period_start AS DATE)), ',') as meses_existentes
     FROM bronze.performance_targets
     WHERE target_year = @year
-    GROUP BY crm_id, indicator_code
+    GROUP BY codigo_assessor_crm, indicator_code
     HAVING COUNT(*) < 12;
 END;
 ```
@@ -460,7 +460,7 @@ END;
 -- Verificar completude anual
 WITH monthly_coverage AS (
     SELECT 
-        crm_id,
+        codigo_assessor_crm,
         indicator_code,
         target_year,
         COUNT(DISTINCT MONTH(CAST(period_start AS DATE))) as months_count,
@@ -468,10 +468,10 @@ WITH monthly_coverage AS (
         MAX(CAST(period_start AS DATE)) as last_month
     FROM bronze.performance_targets
     WHERE is_processed = 0
-    GROUP BY crm_id, indicator_code, target_year
+    GROUP BY codigo_assessor_crm, indicator_code, target_year
 )
 SELECT 
-    crm_id,
+    codigo_assessor_crm,
     indicator_code,
     target_year,
     months_count,
@@ -482,24 +482,24 @@ SELECT
     END as status
 FROM monthly_coverage
 WHERE months_count < 12
-ORDER BY months_count, crm_id;
+ORDER BY months_count, codigo_assessor_crm;
 
 -- Análise de crescimento mensal
 WITH monthly_growth AS (
     SELECT 
-        crm_id,
+        codigo_assessor_crm,
         indicator_code,
         CAST(period_start AS DATE) as month_date,
         CAST(target_value AS FLOAT) as target,
         LAG(CAST(target_value AS FLOAT)) OVER (
-            PARTITION BY crm_id, indicator_code 
+            PARTITION BY codigo_assessor_crm, indicator_code 
             ORDER BY period_start
         ) as prev_target
     FROM bronze.performance_targets
     WHERE is_processed = 0
 )
 SELECT 
-    crm_id,
+    codigo_assessor_crm,
     indicator_code,
     month_date,
     target,
@@ -584,11 +584,11 @@ END;
 -- Preencher gaps de meses faltantes com interpolação
 WITH month_gaps AS (
     SELECT 
-        a.crm_id,
+        a.codigo_assessor_crm,
         a.indicator_code,
         m.month_date
     FROM (
-        SELECT DISTINCT crm_id, indicator_code 
+        SELECT DISTINCT codigo_assessor_crm, indicator_code 
         FROM bronze.performance_targets
     ) a
     CROSS JOIN (
@@ -596,7 +596,7 @@ WITH month_gaps AS (
         FROM (SELECT TOP 12 ROW_NUMBER() OVER (ORDER BY object_id) - 1 as n FROM sys.objects) x
     ) m
     LEFT JOIN bronze.performance_targets t
-        ON a.crm_id = t.crm_id
+        ON a.codigo_assessor_crm = t.codigo_assessor_crm
         AND a.indicator_code = t.indicator_code
         AND t.period_start = m.month_date
     WHERE t.load_id IS NULL
@@ -816,7 +816,7 @@ class PerformanceTargetsETL:
         report = {
             'summary': {
                 'total_records': len(df),
-                'unique_assessors': df['crm_id'].nunique(),
+                'unique_assessors': df['codigo_assessor_crm'].nunique(),
                 'unique_indicators': df['indicator_code'].nunique(),
                 'date_range': f"{df['period_start'].min()} to {df['period_start'].max()}",
                 'extraction_time': datetime.now().isoformat()

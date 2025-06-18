@@ -263,22 +263,22 @@ class DataValidator:
     def __init__(self, db_connection):
         self.db = db_connection
     
-    def validate_weight_sum(self, crm_id=None):
+    def validate_weight_sum(self, codigo_assessor_crm=None):
         """Valida se soma dos pesos CARD é 100% por assessor"""
-        where_clause = f"AND a.crm_id = '{crm_id}'" if crm_id else ""
+        where_clause = f"AND a.codigo_assessor_crm = '{codigo_assessor_crm}'" if codigo_assessor_crm else ""
         
         query = f"""
             WITH weight_check AS (
                 SELECT 
-                    a.crm_id,
+                    a.codigo_assessor_crm,
                     SUM(CASE WHEN i.category = 'CARD' THEN a.indicator_weight ELSE 0 END) as total_weight
                 FROM silver.performance_assignments a
                 INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
                 WHERE a.is_active = 1 {where_clause}
-                GROUP BY a.crm_id
+                GROUP BY a.codigo_assessor_crm
             )
             SELECT 
-                crm_id,
+                codigo_assessor_crm,
                 total_weight,
                 CASE 
                     WHEN ABS(total_weight - 100.00) < 0.01 THEN 'VÁLIDO'
@@ -294,7 +294,7 @@ class DataValidator:
         query = """
             SELECT DISTINCT 
                 b.indicator_code,
-                b.crm_id,
+                b.codigo_assessor_crm,
                 CASE 
                     WHEN i.indicator_id IS NULL THEN 'NÃO EXISTE'
                     ELSE 'OK'

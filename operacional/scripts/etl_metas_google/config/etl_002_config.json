@@ -13,7 +13,7 @@
     "validation": {
         "min_records": 50,
         "max_records": 1000,
-        "required_fields": ["crm_id", "indicator_code", "indicator_type"],
+        "required_fields": ["codigo_assessor_crm", "indicator_code", "indicator_type"],
         "valid_indicator_types": ["CARD", "GATILHO", "KPI", "PPI", "METRICA"],
         "max_weight_deviation": 0.01,
         "required_indicator_types": ["CARD", "GATILHO"]

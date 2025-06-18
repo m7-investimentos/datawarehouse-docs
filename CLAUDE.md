@@ -144,7 +144,7 @@ S3_BUCKET_NAME=m7investimentos
 - **performance_targets**: Period-specific targets for each indicator
 
 ### Investment Tracking
-- **Assessores/CRM**: Investment advisors (identified by crm_id)
+- **Assessores/CRM**: Investment advisors (identified by codigo_assessor_crm)
 - **Captação**: Client deposits/funding
 - **Resgates**: Client withdrawals
 - **Patrimônio**: Assets under management
@@ -152,7 +152,7 @@ S3_BUCKET_NAME=m7investimentos
 ## Critical Implementation Notes
 
 ### Column Name Changes
-- **IMPORTANT**: All references to `cod_assessor` have been replaced with `crm_id` throughout the system
+- **IMPORTANT**: All references to `cod_assessor` and `crm_id` have been replaced with `codigo_assessor_crm` throughout the system
 - This affects assignments, targets, and all related queries
 
 ### Date Handling

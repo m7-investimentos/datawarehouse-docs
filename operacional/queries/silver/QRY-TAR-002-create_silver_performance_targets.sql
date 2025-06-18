@@ -52,7 +52,7 @@ Tabela criada: silver.performance_targets
 
 Colunas principais:
 - target_id: Identificador único da meta
-- crm_id: Código do assessor (FK)
+- codigo_assessor_crm: Código do assessor no CRM (FK)
 - indicator_id: ID do indicador (FK)
 - period_start/end: Período da meta
 - target_value: Valor da meta
@@ -67,7 +67,7 @@ Colunas principais:
 /*
 Tabelas/Views utilizadas:
 - silver.performance_indicators: Para FK de indicator_id
-- dim.assessores: Para validação de crm_id (se existir)
+- dim.assessores: Para validação de codigo_assessor_crm (se existir)
 
 Pré-requisitos:
 - Schema silver deve existir
@@ -112,7 +112,7 @@ CREATE TABLE [silver].[performance_targets](
     [target_id] [int] IDENTITY(1,1) NOT NULL,
     
     -- Chaves de negócio
-    [crm_id] [varchar](20) NOT NULL,
+    [codigo_assessor_crm] [varchar](20) NOT NULL,
     [indicator_id] [int] NOT NULL,
     
     -- Período
@@ -145,7 +145,7 @@ CREATE TABLE [silver].[performance_targets](
     -- Constraint única para evitar duplicatas
     CONSTRAINT [UQ_performance_targets_unique] UNIQUE NONCLUSTERED 
     (
-        [crm_id] ASC,
+        [codigo_assessor_crm] ASC,
         [indicator_id] ASC,
         [period_start] ASC
     ) WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
@@ -171,14 +171,14 @@ GO
 
 -- Índice para busca por assessor e período
 CREATE NONCLUSTERED INDEX [IX_targets_assessor_period]
-ON [silver].[performance_targets] ([crm_id], [period_start])
+ON [silver].[performance_targets] ([codigo_assessor_crm], [period_start])
 INCLUDE ([indicator_id], [target_value], [stretch_target], [minimum_target]);
 GO
 
 -- Índice para busca por indicador
 CREATE NONCLUSTERED INDEX [IX_targets_indicator]
 ON [silver].[performance_targets] ([indicator_id], [period_start])
-INCLUDE ([crm_id], [target_value]);
+INCLUDE ([codigo_assessor_crm], [target_value]);
 GO
 
 -- Índice para análises temporais
@@ -230,7 +230,7 @@ EXEC sys.sp_addextendedproperty
     @value=N'Código do assessor/AAI', 
     @level0type=N'SCHEMA',@level0name=N'silver', 
     @level1type=N'TABLE',@level1name=N'performance_targets', 
-    @level2type=N'COLUMN',@level2name=N'crm_id';
+    @level2type=N'COLUMN',@level2name=N'codigo_assessor_crm';
 GO
 
 EXEC sys.sp_addextendedproperty 
@@ -393,7 +393,7 @@ WHERE tp.name = 'performance_targets';
 
 -- Query para análise de metas por assessor
 SELECT 
-    t.crm_id,
+    t.codigo_assessor_crm,
     i.indicator_name,
     YEAR(t.period_start) as target_year,
     COUNT(*) as months_defined,
@@ -402,8 +402,8 @@ SELECT
 FROM silver.performance_targets t
 INNER JOIN silver.performance_indicators i ON t.indicator_id = i.indicator_id
 WHERE t.is_active = 1
-GROUP BY t.crm_id, i.indicator_name, YEAR(t.period_start)
-ORDER BY t.crm_id, i.indicator_name, target_year;
+GROUP BY t.codigo_assessor_crm, i.indicator_name, YEAR(t.period_start)
+ORDER BY t.codigo_assessor_crm, i.indicator_name, target_year;
 */
 
 -- ==============================================================================

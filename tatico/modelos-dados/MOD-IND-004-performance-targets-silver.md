@@ -49,7 +49,7 @@ Documentar o modelo de dados da tabela `silver.performance_targets` que armazena
 ├─────────────────────────┤         ├──────────────────────────┤
 │ PK: target_id          │         │ PK: indicator_id         │
 │ FK: indicator_id       │────────<│ indicator_code           │
-│ crm_id                 │         │ indicator_name           │
+│ codigo_assessor_crm    │         │ indicator_name           │
 │ period_start           │         │ indicator_type           │
 │ period_end             │         │ is_inverted              │
 │ target_value           │         │ calculation_formula      │
@@ -82,7 +82,7 @@ Documentar o modelo de dados da tabela `silver.performance_targets` que armazena
 | Campo | Tipo | Constraint | Descrição | Exemplo | Regras de Negócio |
 |-------|------|------------|-----------|---------|-------------------|
 | target_id | INT | PK, IDENTITY(1,1), NOT NULL | ID único da meta | 12345 | Auto-incremento |
-| crm_id | VARCHAR(20) | NOT NULL, INDEX | Código do assessor no CRM | "AAI000123" | Formato AAI + números |
+| codigo_assessor_crm | VARCHAR(20) | NOT NULL, INDEX | Código do assessor no CRM | "AAI000123" | Formato AAI + números |
 | indicator_id | INT | FK, NOT NULL | ID do indicador | 5 | Ref: performance_indicators |
 | period_type | VARCHAR(20) | NOT NULL, DEFAULT 'MENSAL' | Tipo do período | "MENSAL" | Sempre MENSAL atualmente |
 | period_start | DATE | NOT NULL | Primeiro dia do mês | "2025-01-01" | Sempre dia 01 |
@@ -103,8 +103,8 @@ Documentar o modelo de dados da tabela `silver.performance_targets` que armazena
 | Nome | Tipo | Campos | Propósito |
 |------|------|--------|-----------|
 | PK_silver_performance_targets | CLUSTERED | target_id | Chave primária |
-| UQ_performance_targets_unique | UNIQUE | crm_id, indicator_id, period_start | Evitar duplicatas |
-| IX_targets_assessor_period | NONCLUSTERED | crm_id, period_start | Queries por assessor |
+| UQ_performance_targets_unique | UNIQUE | codigo_assessor_crm, indicator_id, period_start | Evitar duplicatas |
+| IX_targets_assessor_period | NONCLUSTERED | codigo_assessor_crm, period_start | Queries por assessor |
 | IX_targets_indicator | NONCLUSTERED | indicator_id | Joins com indicators |
 | IX_targets_temporal | NONCLUSTERED | period_start, period_end | Análises temporais |
 
@@ -132,7 +132,7 @@ CHECK (target_value IS NOT NULL OR stretch_target IS NOT NULL OR minimum_target 
 
 ### 5.2 Cardinalidade dos Relacionamentos
 - **Indicator → Target**: 1:N (Um indicador tem várias metas ao longo do tempo)
-- **Assessor → Target**: Implícito 1:N via crm_id
+- **Assessor → Target**: Implícito 1:N via codigo_assessor_crm
 - **Período → Target**: 1:N (Um período pode ter metas de vários assessores)
 
 ## 6. Regras de Negócio e Validações
@@ -151,13 +151,13 @@ CHECK (target_value IS NOT NULL OR stretch_target IS NOT NULL OR minimum_target 
 -- RN003: Validação de completude anual (na procedure)
 WITH monthly_coverage AS (
     SELECT 
-        crm_id,
+        codigo_assessor_crm,
         indicator_id,
         YEAR(period_start) as target_year,
         COUNT(DISTINCT MONTH(period_start)) as months_count
     FROM silver.performance_targets
     WHERE is_active = 1
-    GROUP BY crm_id, indicator_id, YEAR(period_start)
+    GROUP BY codigo_assessor_crm, indicator_id, YEAR(period_start)
 )
 SELECT * FROM monthly_coverage
 WHERE months_count < 12;
@@ -215,7 +215,7 @@ ALTER INDEX ALL ON silver.performance_targets REBUILD;
 ### 9.1 Classificação de Dados
 | Campo | Classificação | Tratamento |
 |-------|---------------|------------|
-| crm_id | Interno | Acesso controlado |
+| codigo_assessor_crm | Interno | Acesso controlado |
 | target_value | Confidencial | Não expor publicamente |
 | stretch_target | Confidencial | Restrito a gestão |
 | minimum_target | Confidencial | Restrito a gestão |
@@ -223,18 +223,18 @@ ALTER INDEX ALL ON silver.performance_targets REBUILD;
 ### 9.2 Políticas de Acesso (RLS)
 ```sql
 -- Row Level Security por assessor
-CREATE FUNCTION dbo.fn_security_targets(@crm_id VARCHAR(20))
+CREATE FUNCTION dbo.fn_security_targets(@codigo_assessor_crm VARCHAR(20))
 RETURNS TABLE
 WITH SCHEMABINDING
 AS RETURN
     SELECT 1 AS access_granted
-    WHERE @crm_id = USER_NAME()
+    WHERE @codigo_assessor_crm = USER_NAME()
        OR IS_ROLEMEMBER('PerformanceManager') = 1
        OR IS_ROLEMEMBER('db_owner') = 1;
 
 -- Aplicar política
 CREATE SECURITY POLICY TargetsSecurityPolicy
-ADD FILTER PREDICATE dbo.fn_security_targets(crm_id)
+ADD FILTER PREDICATE dbo.fn_security_targets(codigo_assessor_crm)
 ON silver.performance_targets
 WITH (STATE = ON);
 ```
@@ -296,7 +296,7 @@ Gold.performance_metrics
 ```sql
 -- Metas do mês atual por assessor
 SELECT 
-    t.crm_id,
+    t.codigo_assessor_crm,
     i.indicator_name,
     t.target_value,
     t.stretch_target,
@@ -305,21 +305,21 @@ FROM silver.performance_targets t
 INNER JOIN silver.performance_indicators i ON t.indicator_id = i.indicator_id
 WHERE t.period_start = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
   AND t.is_active = 1
-ORDER BY t.crm_id, i.indicator_code;
+ORDER BY t.codigo_assessor_crm, i.indicator_code;
 
 -- Análise YoY de evolução de metas
 WITH yearly_targets AS (
     SELECT 
-        crm_id,
+        codigo_assessor_crm,
         indicator_id,
         YEAR(period_start) as target_year,
         SUM(target_value) as annual_target
     FROM silver.performance_targets
     WHERE is_active = 1
-    GROUP BY crm_id, indicator_id, YEAR(period_start)
+    GROUP BY codigo_assessor_crm, indicator_id, YEAR(period_start)
 )
 SELECT 
-    curr.crm_id,
+    curr.codigo_assessor_crm,
     curr.indicator_id,
     curr.target_year,
     curr.annual_target,
@@ -331,10 +331,10 @@ SELECT
     END as growth_percent
 FROM yearly_targets curr
 LEFT JOIN yearly_targets prev 
-    ON curr.crm_id = prev.crm_id 
+    ON curr.codigo_assessor_crm = prev.codigo_assessor_crm 
     AND curr.indicator_id = prev.indicator_id
     AND curr.target_year = prev.target_year + 1
-ORDER BY curr.crm_id, curr.indicator_id, curr.target_year;
+ORDER BY curr.codigo_assessor_crm, curr.indicator_id, curr.target_year;
 ```
 
 ### 13.2 Padrões de Uso

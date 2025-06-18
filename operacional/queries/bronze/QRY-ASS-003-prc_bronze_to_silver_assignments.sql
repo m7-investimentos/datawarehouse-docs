@@ -143,7 +143,7 @@ BEGIN
         
         -- Inserir novos registros diretamente na Silver
         INSERT INTO silver.performance_assignments (
-            crm_id,
+            codigo_assessor_crm,
             indicator_id,
             indicator_weight,
             valid_from,
@@ -157,7 +157,7 @@ BEGIN
             bronze_load_id
         )
         SELECT 
-            UPPER(LTRIM(RTRIM(b.crm_id))) as crm_id,
+            UPPER(LTRIM(RTRIM(b.codigo_assessor_crm))) as codigo_assessor_crm,
             i.indicator_id,
             CASE 
                 WHEN b.indicator_type = 'CARD' THEN 
@@ -180,7 +180,7 @@ BEGIN
           AND NOT EXISTS (
               SELECT 1 
               FROM silver.performance_assignments s
-              WHERE s.crm_id = UPPER(LTRIM(RTRIM(b.crm_id)))
+              WHERE s.codigo_assessor_crm = UPPER(LTRIM(RTRIM(b.codigo_assessor_crm)))
                 AND s.indicator_id = i.indicator_id
                 AND s.valid_from = ISNULL(TRY_CAST(b.valid_from AS DATE), '2025-01-01')
           );
@@ -196,7 +196,7 @@ BEGIN
             -- Contar assessores com peso inválido
             WITH weight_check AS (
                 SELECT 
-                    a.crm_id,
+                    a.codigo_assessor_crm,
                     SUM(CASE WHEN i.category = 'CARD' THEN a.indicator_weight ELSE 0 END) as total_weight
                 FROM silver.performance_assignments a
                 INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
@@ -206,7 +206,7 @@ BEGIN
                       FROM bronze.performance_assignments 
                       WHERE processing_date >= DATEADD(MINUTE, -5, GETDATE())
                   )
-                GROUP BY a.crm_id
+                GROUP BY a.codigo_assessor_crm
             )
             SELECT @rows_error = COUNT(*)
             FROM weight_check
@@ -379,7 +379,7 @@ EXEC bronze.prc_bronze_to_silver_assignments
 
 -- Verificar resultados
 SELECT 
-    a.crm_id,
+    a.codigo_assessor_crm,
     i.indicator_name,
     a.indicator_weight,
     a.valid_from,
@@ -387,7 +387,7 @@ SELECT
 FROM silver.performance_assignments a
 INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
 WHERE a.bronze_load_id > 0
-ORDER BY a.crm_id, i.indicator_name;
+ORDER BY a.codigo_assessor_crm, i.indicator_name;
 */
 
 -- ==============================================================================
