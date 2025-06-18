@@ -362,6 +362,8 @@ ORDER BY curr.crm_id, curr.indicator_id, curr.target_year;
 - [QRY-TAR-003 - Procedure Bronze to Silver](../../operacional/queries/bronze/QRY-TAR-003-prc_bronze_to_silver_performance_targets.sql)
 - [MOD-IND-001 - Sistema Tracking Performance KPIs](MOD-IND-001-sistema-tracking-performance-kpis.md)
 - [MOD-IND-002 - Performance Indicators Silver](MOD-IND-002-performance-indicators-silver.md)
+- [ARQ-DWH-001 - Visão Geral do Data Warehouse](../../estrategico/arquiteturas/ARQ-DWH-001-visao-geral-datawarehouse.md)
+- [ARQ-IND-001 - Performance Tracking System](../../estrategico/arquiteturas/ARQ-IND-001-performance-tracking-system.md)
 
 ### 15.3 Ferramentas e Recursos
 - SQL Server Management Studio para administração

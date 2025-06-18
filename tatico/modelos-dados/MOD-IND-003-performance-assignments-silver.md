@@ -430,6 +430,8 @@ ORDER BY a.valid_from DESC, i.indicator_code;
 ### 15.2 Documentação Relacionada
 - [ETL-IND-002 - Processo de Extração de Atribuições](../processos-etl/ETL-IND-002-extracao-atribuicoes-performance.md)
 - [MOD-IND-002 - Modelo Performance Indicators Silver](MOD-IND-002-performance-indicators-silver.md)
+- [ARQ-DWH-001 - Visão Geral do Data Warehouse](../../estrategico/arquiteturas/ARQ-DWH-001-visao-geral-datawarehouse.md)
+- [ARQ-IND-001 - Performance Tracking System](../../estrategico/arquiteturas/ARQ-IND-001-performance-tracking-system.md)
 - [POL-GOV-001 - Política de Gestão de Performance](../../../business-documentation/estrategico/politicas/POL-GOV-001-performance-desempenho.md)
 - [MAN-GES-001 - Manual de Gestão de Performance](../../../business-documentation/estrategico/manuais/performance-desempenho/MAN-GES-001-manual-gestao-performance.md)
 

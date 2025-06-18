@@ -378,6 +378,8 @@ WHERE aggregation_method = 'CUSTOM'
 
 ### 15.2 Documentação Relacionada
 - [ETL-IND-001 - Processo de Extração de Indicadores](../processos-etl/ETL-IND-001-extracao-indicadores-performance.md)
+- [ARQ-DWH-001 - Visão Geral do Data Warehouse](../../estrategico/arquiteturas/ARQ-DWH-001-visao-geral-datawarehouse.md)
+- [ARQ-IND-001 - Performance Tracking System](../../estrategico/arquiteturas/ARQ-IND-001-performance-tracking-system.md)
 - [POL-GOV-001 - Política de Governança de Performance](../../../business-documentation/estrategico/politicas/POL-GOV-001-performance-desempenho.md)
 - [MAN-GES-001 - Manual de Gestão de Performance](../../../business-documentation/estrategico/manuais/performance-desempenho/MAN-GES-001-manual-gestao-performance.md)
 

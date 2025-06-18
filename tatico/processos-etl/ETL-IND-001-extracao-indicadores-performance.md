@@ -434,6 +434,8 @@ def run_post_load_validation(self):
 - [MOD-IND-002 - Modelo de Dados Performance Indicators Silver](../modelos-dados/MOD-IND-002-performance-indicators-silver.md)
 - [QRY-IND-001 - DDL Bronze Performance Indicators](../../operacional/queries/bronze/QRY-IND-001-create_bronze_performance_indicators.sql)
 - [QRY-IND-003 - Procedure Bronze to Silver Indicators](../../operacional/queries/bronze/QRY-IND-003-prc_bronze_to_silver_indicators.sql)
+- [ARQ-DWH-001 - Visão Geral do Data Warehouse](../../estrategico/arquiteturas/ARQ-DWH-001-visao-geral-datawarehouse.md)
+- [ARQ-IND-001 - Performance Tracking System](../../estrategico/arquiteturas/ARQ-IND-001-performance-tracking-system.md)
 - [CLAUDE.md - Diretrizes do Projeto](../../CLAUDE.md)
 
 ---

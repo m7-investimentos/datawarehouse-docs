@@ -599,6 +599,8 @@ def load(self, dry_run: bool = False) -> int:
 - [QRY-ASS-001 - DDL Bronze Performance Assignments](../../operacional/queries/bronze/QRY-ASS-001-create_bronze_performance_assignments.sql)
 - [QRY-ASS-003 - Procedure Bronze to Silver Assignments](../../operacional/queries/bronze/QRY-ASS-003-prc_bronze_to_silver_assignments.sql)
 - [ETL-IND-001 - Extração de Indicadores de Performance](ETL-IND-001-extracao-indicadores-performance.md)
+- [ARQ-DWH-001 - Visão Geral do Data Warehouse](../../estrategico/arquiteturas/ARQ-DWH-001-visao-geral-datawarehouse.md)
+- [ARQ-IND-001 - Performance Tracking System](../../estrategico/arquiteturas/ARQ-IND-001-performance-tracking-system.md)
 - [CLAUDE.md - Diretrizes do Projeto](../../CLAUDE.md)
 
 ---

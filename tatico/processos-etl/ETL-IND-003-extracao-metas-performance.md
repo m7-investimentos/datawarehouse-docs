@@ -936,7 +936,8 @@ if __name__ == "__main__":
 ### 15.4 Referências
 - [Google Sheets API - Batch Operations](https://developers.google.com/sheets/api/guides/batchupdate)
 - [SQL Server Bulk Insert Best Practices](https://docs.microsoft.com/en-us/sql/relational-databases/import-export/bulk-import-large-amounts-of-data)
-- [ARQ-001 - Arquitetura Performance Tracking](../../estrategico/arquiteturas/ARQ-001-visao-geral-datawarehouse.md)
+- [ARQ-DWH-001 - Visão Geral do Data Warehouse](../../estrategico/arquiteturas/ARQ-DWH-001-visao-geral-datawarehouse.md)
+- [ARQ-IND-001 - Performance Tracking System](../../estrategico/arquiteturas/ARQ-IND-001-performance-tracking-system.md)
 - [ETL-IND-001 - Performance Indicators](ETL-IND-001-extracao-indicadores-performance.md)
 - [ETL-IND-002 - Performance Assignments](ETL-IND-002-extracao-atribuicoes-performance.md)
 - [MOD-IND-001 - Sistema Tracking Performance KPIs](../modelos-dados/MOD-IND-001-sistema-tracking-performance-kpis.md)
