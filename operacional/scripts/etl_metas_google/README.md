@@ -37,6 +37,7 @@ etl_metas_google/
 ├── test_connection.py        # Script para testar conexão
 ├── verify_data.py            # Script para verificar dados
 ├── requirements.txt          # Dependências Python
+├── setup_missing_objects.py  # Script para criar objetos no banco
 ├── .env                      # Variáveis de ambiente
 ├── CHANGES.md               # Histórico de alterações
 └── README.md                 # Este arquivo
@@ -48,6 +49,12 @@ etl_metas_google/
    ```bash
    pip install -r requirements.txt
    ```
+
+2. **Criar objetos no banco (primeira execução):**
+   ```bash
+   python setup_missing_objects.py
+   ```
+   Este script verifica e cria tabelas/procedures necessárias.
 
 2. **Configurar credenciais do Google:**
    - Obter arquivo JSON de Service Account com acesso às planilhas
