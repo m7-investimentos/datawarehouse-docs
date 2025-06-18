@@ -109,14 +109,23 @@ CREATE TABLE [bronze].[performance_assignments](
     [indicator_code] [varchar](50) NOT NULL,
     [weight] [varchar](20) NULL,
     [is_active] [varchar](10) NULL,
+    [is_current] [varchar](10) NULL,
     [valid_from] [varchar](30) NULL,
     [valid_to] [varchar](30) NULL,
     [indicator_type] [varchar](50) NULL,
     [notes] [varchar](1000) NULL,
     
+    -- Dados de aprovação e comentários
+    [created_by] [varchar](200) NULL,
+    [approved_by] [varchar](200) NULL,
+    [comments] [varchar](1000) NULL,
+    
     -- Validações
     [weight_validation] [varchar](10) NULL,
     [total_weight] [varchar](20) NULL,
+    [weight_sum_valid] [bit] NULL,
+    [indicator_exists] [bit] NULL,
+    [validation_errors] [varchar](1000) NULL,
     
     -- Controle de linha original
     [row_number] [int] NULL,
@@ -237,6 +246,14 @@ GO
 
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
+    @value=N'Registro atual (1=atual)', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'is_current';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
     @value=N'Data de início da vigência', 
     @level0type=N'SCHEMA',@level0name=N'bronze', 
     @level1type=N'TABLE',@level1name=N'performance_assignments', 
@@ -267,6 +284,31 @@ EXEC sys.sp_addextendedproperty
     @level2type=N'COLUMN',@level2name=N'notes';
 GO
 
+-- Dados de aprovação
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Email de quem criou a atribuição', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'created_by';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Email de quem aprovou a atribuição', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'approved_by';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Comentários sobre a atribuição', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'comments';
+GO
+
 -- Validações
 EXEC sys.sp_addextendedproperty 
     @name=N'MS_Description', 
@@ -282,6 +324,30 @@ EXEC sys.sp_addextendedproperty
     @level0type=N'SCHEMA',@level0name=N'bronze', 
     @level1type=N'TABLE',@level1name=N'performance_assignments', 
     @level2type=N'COLUMN',@level2name=N'total_weight';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Indicador se a soma dos pesos é válida', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'weight_sum_valid';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Indicador se o código do indicador existe', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'indicator_exists';
+GO
+
+EXEC sys.sp_addextendedproperty 
+    @name=N'MS_Description', 
+    @value=N'Erros de validação encontrados', 
+    @level0type=N'SCHEMA',@level0name=N'bronze', 
+    @level1type=N'TABLE',@level1name=N'performance_assignments', 
+    @level2type=N'COLUMN',@level2name=N'validation_errors';
 GO
 
 -- Controle

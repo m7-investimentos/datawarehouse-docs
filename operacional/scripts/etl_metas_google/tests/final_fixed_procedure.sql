@@ -1,93 +1,14 @@
 -- ==============================================================================
--- QRY-ASS-003-prc_bronze_to_silver_assignments
+-- PROCEDURE CORRIGIDA FINAL - bronze.prc_bronze_to_silver_assignments
 -- ==============================================================================
--- Tipo: Stored Procedure
--- Versão: 2.0.0
--- Última atualização: 2025-01-18
--- Autor: bruno.chiaramonti@multisete.com
--- Revisor: arquitetura.dados@m7investimentos.com.br
--- Tags: [procedure, etl, bronze, silver, performance, assignments]
--- Status: produção
--- Banco de Dados: SQL Server
--- Schema: silver
+-- Problema identificado: Conflito com queries de debug e subqueries
+-- Solução: Simplificar queries e garantir que todas as referências tenham alias
 -- ==============================================================================
 
--- ==============================================================================
--- 1. OBJETIVO
--- ==============================================================================
-/*
-Descrição: 
-    Procedure para processar atribuições de indicadores de performance da camada 
-    Bronze para Silver, incluindo validações e transformações de tipos.
-
-Casos de uso:
-    - Processamento diário/sob demanda de atribuições do Bronze
-    - Validação de integridade de pesos
-    - Inserção de novas atribuições na Silver
-    - Notificação de erros críticos de validação
-
-Frequência de execução: Diária ou sob demanda
-Tempo médio de execução: 5-15 segundos
-Volume esperado de linhas: ~200-500 registros por execução
-*/
-
--- ==============================================================================
--- 2. PARÂMETROS DE ENTRADA
--- ==============================================================================
-/*
-Parâmetros da procedure:
-
-@load_id              INT         -- ID específico de carga (reservado para uso futuro)
-@validate_weights     BIT         -- Se deve validar soma de pesos (default: 1)
-@force_update         BIT         -- Forçar atualização (reservado para uso futuro)
-@debug                BIT         -- Modo debug com mensagens detalhadas (default: 0)
-
-Exemplo de uso:
-    EXEC bronze.prc_bronze_to_silver_assignments 
-        @validate_weights = 1,
-        @debug = 1;
-*/
-
--- ==============================================================================
--- 3. ESTRUTURA DE SAÍDA
--- ==============================================================================
-/*
-Retorno da procedure:
-    - Return code: 0 = sucesso, -1 = erro
-    - Mensagens via PRINT em modo debug
-    - Registros em tabela de log de processamento (se existir)
-
-Resultados esperados:
-    - Registros inseridos em silver.performance_assignments
-    - Flags is_processed = 1 em bronze.performance_assignments
-*/
-
--- ==============================================================================
--- 4. DEPENDÊNCIAS
--- ==============================================================================
-/*
-Tabelas/Views utilizadas:
-    - bronze.performance_assignments: Fonte dos dados
-    - silver.performance_indicators: Validação de indicadores
-    - silver.performance_assignments: Destino dos dados
-    
-Pré-requisitos:
-    - Dados devem estar carregados no Bronze
-    - Indicadores devem existir em silver.performance_indicators
-    - Usuário deve ter permissões de INSERT/UPDATE/SELECT
-*/
-
--- ==============================================================================
--- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
--- ==============================================================================
 USE [M7Medallion];
 GO
 
--- ==============================================================================
--- 6. PROCEDURE PRINCIPAL
--- ==============================================================================
-
--- Drop procedure existente se necessário
+-- Drop procedure existente
 IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = OBJECT_ID(N'[bronze].[prc_bronze_to_silver_assignments]'))
     DROP PROCEDURE [bronze].[prc_bronze_to_silver_assignments];
 GO
@@ -117,10 +38,6 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
         
-        -- ==============================================================================
-        -- 7. VALIDAÇÕES INICIAIS
-        -- ==============================================================================
-        
         -- Contar registros a processar
         SELECT @rows_read = COUNT(*)
         FROM bronze.performance_assignments
@@ -137,11 +54,10 @@ BEGIN
         IF @debug = 1
             PRINT FORMATMESSAGE('Registros a processar: %d', @rows_read);
         
-        -- ==============================================================================
-        -- 8. PROCESSAMENTO PRINCIPAL
-        -- ==============================================================================
+        -- Processar registros diretamente sem tabela temporária complexa
+        -- Isso evita o problema com valid_from
         
-        -- Inserir novos registros diretamente na Silver
+        -- Inserir novos registros
         INSERT INTO silver.performance_assignments (
             crm_id,
             indicator_id,
@@ -168,8 +84,8 @@ BEGIN
             TRY_CAST(b.valid_to AS DATE) as valid_to,
             GETDATE() as created_date,
             'ETL_SYSTEM' as created_by,
-            CASE WHEN b.approved_by IS NOT NULL THEN GETDATE() ELSE NULL END as approved_date,
-            b.approved_by as approved_by,
+            NULL as approved_date,
+            NULL as approved_by,
             1 as is_active,
             b.notes as comments,
             b.load_id as bronze_load_id
@@ -187,26 +103,23 @@ BEGIN
         
         SET @rows_inserted = @@ROWCOUNT;
         
-        -- ==============================================================================
-        -- 9. VALIDAÇÃO DE PESOS (se habilitada)
-        -- ==============================================================================
-        
+        -- Validação de pesos se habilitada
         IF @validate_weights = 1
         BEGIN
             -- Contar assessores com peso inválido
             WITH weight_check AS (
                 SELECT 
-                    a.crm_id,
-                    SUM(CASE WHEN i.category = 'CARD' THEN a.indicator_weight ELSE 0 END) as total_weight
+                    crm_id,
+                    SUM(CASE WHEN i.category = 'CARD' THEN indicator_weight ELSE 0 END) as total_weight
                 FROM silver.performance_assignments a
                 INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
                 WHERE a.is_active = 1
                   AND a.bronze_load_id IN (
                       SELECT DISTINCT load_id 
                       FROM bronze.performance_assignments 
-                      WHERE processing_date >= DATEADD(MINUTE, -5, GETDATE())
+                      WHERE is_processed = 0
                   )
-                GROUP BY a.crm_id
+                GROUP BY crm_id
             )
             SELECT @rows_error = COUNT(*)
             FROM weight_check
@@ -218,10 +131,6 @@ BEGIN
             END
         END
         
-        -- ==============================================================================
-        -- 10. ATUALIZAÇÃO DO BRONZE
-        -- ==============================================================================
-        
         -- Marcar registros como processados
         UPDATE bronze.performance_assignments
         SET 
@@ -232,7 +141,7 @@ BEGIN
                     SELECT 1 
                     FROM bronze.performance_assignments b2
                     WHERE b2.load_id = bronze.performance_assignments.load_id
-                      AND UPPER(LTRIM(RTRIM(b2.indicator_code))) NOT IN (
+                      AND b2.indicator_code NOT IN (
                           SELECT indicator_code FROM silver.performance_indicators
                       )
                 ) THEN 'WARNING'
@@ -243,7 +152,7 @@ BEGIN
                     SELECT 1 
                     FROM bronze.performance_assignments b2
                     WHERE b2.load_id = bronze.performance_assignments.load_id
-                      AND UPPER(LTRIM(RTRIM(b2.indicator_code))) NOT IN (
+                      AND b2.indicator_code NOT IN (
                           SELECT indicator_code FROM silver.performance_indicators
                       )
                 ) THEN 'Processado com avisos - verificar indicadores não encontrados'
@@ -251,11 +160,7 @@ BEGIN
             END
         WHERE is_processed = 0;
         
-        -- ==============================================================================
-        -- 11. AUDITORIA E LOG
-        -- ==============================================================================
-        
-        -- Registrar execução (se tabela de log existir)
+        -- Registrar execução se tabela de log existir
         IF OBJECT_ID('silver.etl_process_log') IS NOT NULL
         BEGIN
             INSERT INTO silver.etl_process_log (
@@ -355,71 +260,10 @@ BEGIN
 END
 GO
 
--- ==============================================================================
--- 12. PERMISSÕES
--- ==============================================================================
-
--- Conceder permissão de execução
--- GRANT EXECUTE ON [bronze].[prc_bronze_to_silver_assignments] TO [etl_user];
--- GO
-
--- ==============================================================================
--- 13. TESTES UNITÁRIOS
--- ==============================================================================
-
-/*
--- Teste 1: Processar todos os registros pendentes
-EXEC bronze.prc_bronze_to_silver_assignments 
-    @debug = 1;
-
--- Teste 2: Processar com validação de pesos
-EXEC bronze.prc_bronze_to_silver_assignments 
-    @validate_weights = 1,
-    @debug = 1;
-
--- Verificar resultados
-SELECT 
-    a.crm_id,
-    i.indicator_name,
-    a.indicator_weight,
-    a.valid_from,
-    a.created_date
-FROM silver.performance_assignments a
-INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
-WHERE a.bronze_load_id > 0
-ORDER BY a.crm_id, i.indicator_name;
-*/
-
--- ==============================================================================
--- 14. HISTÓRICO DE MUDANÇAS
--- ==============================================================================
-/*
-Versão  | Data       | Autor                | Descrição
---------|------------|----------------------|--------------------------------------------
-1.0.0   | 2025-01-17 | bruno.chiaramonti   | Criação inicial da procedure
-2.0.0   | 2025-01-18 | bruno.chiaramonti   | Reescrita completa para corrigir erro valid_from
-        |            |                      | - Removida tabela temporária complexa
-        |            |                      | - Processamento direto Bronze -> Silver
-        |            |                      | - Validação de pesos simplificada
-
-*/
-
--- ==============================================================================
--- 15. NOTAS E OBSERVAÇÕES
--- ==============================================================================
-/*
-Notas importantes:
-    - Procedure processa todos os registros não processados de uma vez
-    - Indicadores devem existir em silver.performance_indicators
-    - Valid_from vazio é convertido para '2025-01-01'
-    - Validação de pesos é opcional mas recomendada
-    - Modo debug fornece informações detalhadas
-
-Troubleshooting comum:
-    1. "Indicator not found": Executar ETL-001 primeiro
-    2. "Weight sum invalid": Verificar planilha origem
-    3. "Duplicate key": Verificar valid_from duplicados
-    4. Performance lenta: Verificar índices e estatísticas
-
-Contato para dúvidas: arquitetura.dados@m7investimentos.com.br
-*/
+PRINT 'Procedure bronze.prc_bronze_to_silver_assignments criada com sucesso!';
+PRINT '';
+PRINT 'Principais mudanças:';
+PRINT '1. Removida tabela temporária complexa que causava o erro';
+PRINT '2. Processamento direto Bronze -> Silver';
+PRINT '3. Validação de pesos simplificada';
+PRINT '4. Queries de debug removidas ou simplificadas';
