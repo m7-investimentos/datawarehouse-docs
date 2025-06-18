@@ -20,7 +20,7 @@ dependências:
 
 ## 1. Objetivo
 
-Definir o modelo de dados para o sistema de Performance Tracking da M7 Investimentos, contemplando as camadas de Metadados e Platinum da arquitetura Medallion. O sistema permite gestão dinâmica de indicadores de performance (KPIs) com pesos variáveis por assessor e período, suportando diferentes tipos de indicadores (CARD, GATILHO, KPI, PPI, METRICA).
+Definir o modelo de dados para o sistema de Performance Tracking da M7 Investimentos, contemplando as camadas de Silver e Platinum da arquitetura Medallion. O sistema permite gestão dinâmica de indicadores de performance (KPIs) com pesos variáveis por assessor e período, suportando diferentes tipos de indicadores (CARD, GATILHO, KPI, PPI, METRICA).
 
 ## 2. Escopo e Contexto
 
@@ -44,7 +44,7 @@ Definir o modelo de dados para o sistema de Performance Tracking da M7 Investime
 - **Schemas**: 
   - `silver`: Configurações validadas
   - `platinum`: Dados processados para consumo
-- **Layer**: Metadados (configuração) + Platinum (resultados)
+- **Layer**: Silver (configuração) + Platinum (resultados)
 
 ## 3. Visão Geral do Modelo
 
@@ -52,67 +52,67 @@ Definir o modelo de dados para o sistema de Performance Tracking da M7 Investime
 
 ```
 CAMADA SILVER (Configuração)
-================================
+=============================
 
-┌─────────────────────────┐
-│ performance_indicators  │
-├─────────────────────────┤
-│ PK: indicator_id       │
-│ UK: indicator_code     │◄─────┐
-│ indicator_name         │      │
-│ category              │      │
-│ unit                  │      │
-│ aggregation_method    │      │
-│ formula               │      │
-│ is_inverted          │      │
-│ is_active            │      │
-└─────────────────────────┘      │
-                                 │
-┌─────────────────────────┐      │
-│ performance_assignments │      │
-├─────────────────────────┤      │
-│ PK: assignment_id      │      │
-│ FK: indicator_id       │──────┘
-│ FK: crm_id             │
+┌──────────────────────────────┐
+│ performance_indicators │
+├──────────────────────────────┤
+│ PK: indicator_id      │
+│ UK: indicator_code     │◄───────┐
+│ indicator_name         │     │
+│ category              │     │
+│ unit                 │     │
+│ aggregation_method     │     │
+│ formula              │     │
+│ is_inverted           │     │
+│ is_active            │     │
+└──────────────────────────────┘     │
+                         │
+┌──────────────────────────────┐     │
+│ performance_assignments │     │
+├──────────────────────────────┤     │
+│ PK: assignment_id      │     │
+│ FK: indicator_id       │─────────┘
+│ FK: crm_id           │
 │ indicator_weight       │◄─── Soma = 100% para CARD
-│ indicator_type         │
-│ valid_from            │
-│ valid_to              │
-└─────────────────────────┘
-         │
-         │
-┌─────────────────────────┐
+│ indicator_type        │
+│ valid_from           │
+│ valid_to            │
+└──────────────────────────────┘
+        │
+        │
+┌──────────────────────────────┐
 │ performance_targets     │
-├─────────────────────────┤
-│ PK: target_id          │
+├──────────────────────────────┤
+│ PK: target_id         │
 │ FK: indicator_id       │
-│ FK: crm_id             │
-│ period_type            │
-│ period_start           │
-│ period_end             │
-│ target_value           │
-│ stretch_target         │
-│ minimum_target         │
-└─────────────────────────┘
+│ FK: crm_id           │
+│ period_type          │
+│ period_start          │
+│ period_end           │
+│ target_value          │
+│ stretch_target        │
+│ minimum_target        │
+└──────────────────────────────┘
 
 CAMADA PLATINUM (Resultados)
 =============================
 
-┌─────────────────────────┐     ┌──────────────────────────┐
-│ performance_tracking    │     │ performance_score_summary│
-├─────────────────────────┤     ├──────────────────────────┤
-│ PK: tracking_id        │     │ PK: summary_id           │
-│ FK: crm_id             │◄────┤ FK: crm_id               │
-│ FK: indicator_id       │     │ period_start             │
-│ period_start           │     │ period_end               │
-│ attribute_name         │     │ card_score               │
-│ attribute_value        │     │ gatilhos_ok              │
-│ attribute_type         │     │ performance_status       │
-└─────────────────────────┘     └──────────────────────────┘
-   ↑                                     ↑
-   │ EAV Pattern                         │ Agregado mensal
-   │                                     │
-   └─────────────────────────────────────┘
+┌──────────────────────────────┐   ┌──────────────────────────────┐
+│ performance_tracking     │   │ performance_score_summary│
+├──────────────────────────────┤   ├──────────────────────────────┤
+│ PK: tracking_id        │   │ PK: summary_id         │
+│ FK: crm_id           │◄────┤ FK: crm_id           │
+│ FK: indicator_id       │   │ period_start          │
+│ period_start          │   │ period_end           │
+│ attribute_name        │   │ card_score           │
+│ attribute_value        │   │ gatilhos_ok          │
+│ attribute_type        │   │ performance_status      │
+└──────────────────────────────┘   └──────────────────────────────┘
+  ↑                        ↑
+  │ EAV Pattern                 │ Agregado mensal
+  │                        │
+  └─────────────────────────────────────────────────────┘
 ```
 
 ### 3.2 Principais Entidades
@@ -411,7 +411,7 @@ END;
 
 ### 7.1 Estratégia de Historização
 - **Tipo**: 
-  - Metadados: SCD Type 2 via valid_from/valid_to
+  - Silver: SCD Type 2 via valid_from/valid_to
   - Platinum: Append-only com is_current flag
 - **Campos de controle**:
   - `created_date`, `created_by`: Registro inicial
@@ -505,7 +505,7 @@ WITH (STATE = ON);
 
 ### 10.1 Sistemas Fonte
 | Sistema | Tabelas/APIs | Frequência | Método |
-|---------|--------------|-----------|---------|
+|---------|--------------|------------|---------|
 | Google Sheets | 3 planilhas | Sob demanda | ETL Python |
 | ERP M7 | Dados financeiros | Diário | CDC/Query |
 | CRM | Dados comerciais | Diário | API REST |
@@ -561,13 +561,13 @@ WITH score_detail AS (
         pa.indicator_type,
         pa.indicator_weight,
         MAX(CASE WHEN pt.attribute_name = 'valor_realizado' 
-                 THEN CAST(pt.attribute_value AS DECIMAL(18,2)) END) as realizado,
+                THEN CAST(pt.attribute_value AS DECIMAL(18,2)) END) as realizado,
         MAX(CASE WHEN pt.attribute_name = 'valor_meta' 
-                 THEN CAST(pt.attribute_value AS DECIMAL(18,2)) END) as meta,
+                THEN CAST(pt.attribute_value AS DECIMAL(18,2)) END) as meta,
         MAX(CASE WHEN pt.attribute_name = 'percentual_atingimento' 
-                 THEN CAST(pt.attribute_value AS DECIMAL(5,2)) END) as percentual,
+                THEN CAST(pt.attribute_value AS DECIMAL(5,2)) END) as percentual,
         MAX(CASE WHEN pt.attribute_name = 'score_final' 
-                 THEN CAST(pt.attribute_value AS DECIMAL(5,2)) END) as score
+                THEN CAST(pt.attribute_value AS DECIMAL(5,2)) END) as score
     FROM platinum.performance_tracking pt
     JOIN silver.performance_indicators pi ON pt.indicator_id = pi.indicator_id
     JOIN silver.performance_assignments pa ON pt.indicator_id = pa.indicator_id 
