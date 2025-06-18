@@ -1,26 +1,27 @@
-# ETL-IND-001-extracao-indicadores-performance
-
 ---
 título: Extração de Indicadores de Performance - Google Sheets para Bronze
-tipo: ETL - Processo ETL
+tipo: ETL
+código: ETL-IND-001
 versão: 2.0.0
+data_criação: 2025-01-17
 última_atualização: 2025-01-18
-autor: bruno.chiaramonti@multisete.com
+próxima_revisão: 2025-04-18
+responsável: bruno.chiaramonti@multisete.com
 aprovador: diretoria.ti@m7investimentos.com.br
 tags: [etl, performance, indicadores, google-sheets, bronze, silver]
 status: aprovado
-dependências:
-  - tipo: modelo
-    ref: [MOD-IND-002]
-    repo: datawarehouse-docs
-  - tipo: procedimento
-    ref: [QRY-IND-003]
-    repo: datawarehouse-docs
+confidencialidade: interno
 ---
+
+# ETL-IND-001 - Extração de Indicadores de Performance
 
 ## 1. Objetivo
 
 Extrair dados de configuração de indicadores de performance da planilha Google Sheets `m7_performance_indicators` para a camada Bronze do Data Warehouse, preservando todos os dados originais sem transformações complexas. Este ETL é responsável apenas pela extração e carga inicial dos dados brutos, preparando-os para posterior processamento pela procedure de transformação Bronze → Silver.
+
+### Dependências
+- **Modelo de dados**: [MOD-IND-002 - Performance Indicators Silver](../modelos-dados/MOD-IND-002-performance-indicators-silver.md)
+- **Procedure**: [QRY-IND-003 - Bronze to Silver Indicators](../../operacional/queries/bronze/QRY-IND-003-prc_bronze_to_silver_indicators.sql)
 
 ## 2. Escopo e Aplicabilidade
 
@@ -430,10 +431,10 @@ def run_post_load_validation(self):
 
 ### 15.3 Referências
 - [Google Sheets API v4 Documentation](https://developers.google.com/sheets/api/quickstart/python)
-- [MOD-IND-001 - Modelo de Dados Performance Indicators Silver]
-- [QRY-IND-001 - DDL Bronze Performance Indicators]
-- [QRY-IND-003 - Procedure Bronze to Silver Indicators]
-- [CLAUDE.md - Diretrizes do Projeto]
+- [MOD-IND-002 - Modelo de Dados Performance Indicators Silver](../modelos-dados/MOD-IND-002-performance-indicators-silver.md)
+- [QRY-IND-001 - DDL Bronze Performance Indicators](../../operacional/queries/bronze/QRY-IND-001-create_bronze_performance_indicators.sql)
+- [QRY-IND-003 - Procedure Bronze to Silver Indicators](../../operacional/queries/bronze/QRY-IND-003-prc_bronze_to_silver_indicators.sql)
+- [CLAUDE.md - Diretrizes do Projeto](../../CLAUDE.md)
 
 ---
 

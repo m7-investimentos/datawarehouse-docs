@@ -1,29 +1,28 @@
-# ETL-IND-002-extracao-atribuicoes-performance
-
 ---
 título: Extração de Atribuições de Performance - Google Sheets para Bronze
-tipo: ETL - Processo ETL
+tipo: ETL
+código: ETL-IND-002
 versão: 2.0.0
+data_criação: 2025-01-17
 última_atualização: 2025-01-18
-autor: bruno.chiaramonti@multisete.com
+próxima_revisão: 2025-04-18
+responsável: bruno.chiaramonti@multisete.com
 aprovador: diretoria.ti@m7investimentos.com.br
 tags: [etl, performance, assignments, google-sheets, bronze, silver]
 status: aprovado
-dependências:
-  - tipo: modelo
-    ref: [MOD-ASS-001]
-    repo: datawarehouse-docs
-  - tipo: procedimento
-    ref: [QRY-ASS-003]
-    repo: datawarehouse-docs
-  - tipo: etl
-    ref: [ETL-IND-001]
-    repo: datawarehouse-docs
+confidencialidade: interno
 ---
+
+# ETL-IND-002 - Extração de Atribuições de Performance
 
 ## 1. Objetivo
 
 Extrair dados de atribuições de indicadores de performance por assessor da planilha Google Sheets `m7_performance_assignments` para a camada Bronze do Data Warehouse, preservando todos os dados originais sem transformações complexas. Este ETL é responsável apenas pela extração e carga inicial dos dados brutos, incluindo validações básicas de integridade de pesos e relacionamentos, preparando-os para posterior processamento pela procedure de transformação Bronze → Silver.
+
+### Dependências
+- **Modelo de dados**: [MOD-IND-003 - Performance Assignments Silver](../modelos-dados/MOD-IND-003-performance-assignments-silver.md)
+- **Procedure**: [QRY-ASS-003 - Bronze to Silver Assignments](../../operacional/queries/bronze/QRY-ASS-003-prc_bronze_to_silver_assignments.sql)
+- **ETL**: [ETL-IND-001 - Extração de Indicadores](ETL-IND-001-extracao-indicadores-performance.md)
 
 ## 2. Escopo e Aplicabilidade
 
@@ -596,11 +595,11 @@ def load(self, dry_run: bool = False) -> int:
 
 ### 15.4 Referências
 - [Google Sheets API v4 Documentation](https://developers.google.com/sheets/api/quickstart/python)
-- [MOD-ASS-001 - Modelo de Dados Performance Assignments Silver]
-- [QRY-ASS-001 - DDL Bronze Performance Assignments]
-- [QRY-ASS-003 - Procedure Bronze to Silver Assignments]
-- [ETL-IND-001 - Extração de Indicadores de Performance]
-- [CLAUDE.md - Diretrizes do Projeto]
+- [MOD-IND-003 - Modelo de Dados Performance Assignments Silver](../modelos-dados/MOD-IND-003-performance-assignments-silver.md)
+- [QRY-ASS-001 - DDL Bronze Performance Assignments](../../operacional/queries/bronze/QRY-ASS-001-create_bronze_performance_assignments.sql)
+- [QRY-ASS-003 - Procedure Bronze to Silver Assignments](../../operacional/queries/bronze/QRY-ASS-003-prc_bronze_to_silver_assignments.sql)
+- [ETL-IND-001 - Extração de Indicadores de Performance](ETL-IND-001-extracao-indicadores-performance.md)
+- [CLAUDE.md - Diretrizes do Projeto](../../CLAUDE.md)
 
 ---
 

@@ -1,22 +1,19 @@
-# MOD-TAR-001-performance-targets-silver
-
 ---
 título: Modelo de Dados Performance Targets Silver - Metas de Performance
-tipo: MOD - Modelo de Dados
+tipo: MOD
+código: MOD-IND-004
 versão: 1.0.0
+data_criação: 2025-01-18
 última_atualização: 2025-01-18
-autor: bruno.chiaramonti@multisete.com
+próxima_revisão: 2025-07-18
+responsável: bruno.chiaramonti@multisete.com
 aprovador: arquitetura.dados@m7investimentos.com.br
 tags: [modelo, performance, targets, metas, silver, dimensional]
 status: aprovado
-dependências:
-  - tipo: processo
-    ref: [ETL-IND-003]
-    repo: datawarehouse-docs
-  - tipo: procedimento
-    ref: [QRY-TAR-003]
-    repo: datawarehouse-docs
+confidencialidade: interno
 ---
+
+# MOD-IND-004 - Modelo de Dados Performance Targets Silver
 
 ## 1. Objetivo
 
@@ -358,12 +355,13 @@ ORDER BY curr.crm_id, curr.indicator_id, curr.target_year;
 ## 15. Referências e Anexos
 
 ### 15.1 Scripts DDL Completos
-- [QRY-TAR-002-create_silver_performance_targets.sql](../operacional/queries/silver/QRY-TAR-002-create_silver_performance_targets.sql)
+- [QRY-TAR-002-create_silver_performance_targets.sql](../../operacional/queries/silver/QRY-TAR-002-create_silver_performance_targets.sql)
 
 ### 15.2 Documentação Relacionada
-- [ETL-IND-003 - Processo de Extração de Metas](ETL-IND-003-extracao-metas-performance.md)
-- [QRY-TAR-003 - Procedure Bronze to Silver](../operacional/queries/bronze/QRY-TAR-003-prc_bronze_to_silver_performance_targets.sql)
-- [MOD-IND-001 - Modelo Performance Indicators](MOD-IND-001-sistema-tracking-performance-kpis.md)
+- [ETL-IND-003 - Processo de Extração de Metas](../processos-etl/ETL-IND-003-extracao-metas-performance.md)
+- [QRY-TAR-003 - Procedure Bronze to Silver](../../operacional/queries/bronze/QRY-TAR-003-prc_bronze_to_silver_performance_targets.sql)
+- [MOD-IND-001 - Sistema Tracking Performance KPIs](MOD-IND-001-sistema-tracking-performance-kpis.md)
+- [MOD-IND-002 - Performance Indicators Silver](MOD-IND-002-performance-indicators-silver.md)
 
 ### 15.3 Ferramentas e Recursos
 - SQL Server Management Studio para administração

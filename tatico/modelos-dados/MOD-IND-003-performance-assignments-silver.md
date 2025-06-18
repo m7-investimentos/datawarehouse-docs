@@ -1,25 +1,19 @@
-# MOD-ASS-001-performance-assignments-silver
-
 ---
 título: Modelo de Dados Performance Assignments - Camada Silver
-tipo: MOD - Modelo de Dados
+tipo: MOD
+código: MOD-IND-003
 versão: 1.0.0
+data_criação: 2025-01-18
 última_atualização: 2025-01-18
-autor: bruno.chiaramonti@multisete.com
+próxima_revisão: 2025-07-18
+responsável: bruno.chiaramonti@multisete.com
 aprovador: arquitetura.dados@m7investimentos.com.br
 tags: [modelo, dados, performance, assignments, silver, atribuições]
 status: aprovado
-dependências:
-  - tipo: processo
-    ref: [ETL-IND-002]
-    repo: datawarehouse-docs
-  - tipo: query
-    ref: [QRY-ASS-003]
-    repo: datawarehouse-docs
-  - tipo: modelo
-    ref: [MOD-IND-002]
-    repo: datawarehouse-docs
+confidencialidade: interno
 ---
+
+# MOD-IND-003 - Modelo de Dados Performance Assignments Silver
 
 ## 1. Objetivo
 
@@ -430,14 +424,14 @@ ORDER BY a.valid_from DESC, i.indicator_code;
 ## 15. Referências e Anexos
 
 ### 15.1 Scripts DDL Completos
-- [QRY-ASS-002-create_silver_performance_assignments.sql]
-- [QRY-ASS-003-prc_bronze_to_silver_assignments.sql]
+- [QRY-ASS-002-create_silver_performance_assignments.sql](../../operacional/queries/silver/QRY-ASS-002-create_silver_performance_assignments.sql)
+- [QRY-ASS-003-prc_bronze_to_silver_assignments.sql](../../operacional/queries/bronze/QRY-ASS-003-prc_bronze_to_silver_assignments.sql)
 
 ### 15.2 Documentação Relacionada
-- [ETL-IND-002 - Processo de Extração de Atribuições]
-- [MOD-IND-002 - Modelo Performance Indicators Silver]
-- [POL-GOV-001 - Política de Gestão de Performance]
-- [MAN-GES-001 - Manual de Gestão de Performance]
+- [ETL-IND-002 - Processo de Extração de Atribuições](../processos-etl/ETL-IND-002-extracao-atribuicoes-performance.md)
+- [MOD-IND-002 - Modelo Performance Indicators Silver](MOD-IND-002-performance-indicators-silver.md)
+- [POL-GOV-001 - Política de Gestão de Performance](../../../business-documentation/estrategico/politicas/POL-GOV-001-performance-desempenho.md)
+- [MAN-GES-001 - Manual de Gestão de Performance](../../../business-documentation/estrategico/manuais/performance-desempenho/MAN-GES-001-manual-gestao-performance.md)
 
 ### 15.3 Ferramentas e Recursos
 - SQL Server Management Studio para administração

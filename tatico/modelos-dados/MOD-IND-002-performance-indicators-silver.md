@@ -1,22 +1,19 @@
-# MOD-IND-002-performance-indicators-silver
-
 ---
 título: Modelo de Dados Performance Indicators - Camada Silver
-tipo: MOD - Modelo de Dados
+tipo: MOD
+código: MOD-IND-002
 versão: 1.0.0
+data_criação: 2025-01-18
 última_atualização: 2025-01-18
-autor: bruno.chiaramonti@multisete.com
+próxima_revisão: 2025-07-18
+responsável: bruno.chiaramonti@multisete.com
 aprovador: arquitetura.dados@m7investimentos.com.br
 tags: [modelo, dados, performance, indicadores, silver, metadados]
 status: aprovado
-dependências:
-  - tipo: processo
-    ref: [ETL-IND-001]
-    repo: datawarehouse-docs
-  - tipo: query
-    ref: [QRY-IND-003]
-    repo: datawarehouse-docs
+confidencialidade: interno
 ---
+
+# MOD-IND-002 - Modelo de Dados Performance Indicators Silver
 
 ## 1. Objetivo
 
@@ -376,13 +373,13 @@ WHERE aggregation_method = 'CUSTOM'
 ## 15. Referências e Anexos
 
 ### 15.1 Scripts DDL Completos
-- [QRY-IND-002-create_silver_performance_indicators.sql]
-- [QRY-IND-003-prc_bronze_to_silver_indicators.sql]
+- [QRY-IND-002-create_silver_performance_indicators.sql](../../operacional/queries/silver/QRY-IND-002-create_silver_performance_indicators.sql)
+- [QRY-IND-003-prc_bronze_to_silver_indicators.sql](../../operacional/queries/bronze/QRY-IND-003-prc_bronze_to_silver_indicators.sql)
 
 ### 15.2 Documentação Relacionada
-- [ETL-IND-001 - Processo de Extração de Indicadores]
-- [POL-GOV-001 - Política de Governança de Performance]
-- [MAN-GES-001 - Manual de Gestão de Performance]
+- [ETL-IND-001 - Processo de Extração de Indicadores](../processos-etl/ETL-IND-001-extracao-indicadores-performance.md)
+- [POL-GOV-001 - Política de Governança de Performance](../../../business-documentation/estrategico/politicas/POL-GOV-001-performance-desempenho.md)
+- [MAN-GES-001 - Manual de Gestão de Performance](../../../business-documentation/estrategico/manuais/performance-desempenho/MAN-GES-001-manual-gestao-performance.md)
 
 ### 15.3 Ferramentas e Recursos
 - SQL Server Management Studio para administração

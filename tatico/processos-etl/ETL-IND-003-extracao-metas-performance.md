@@ -1,29 +1,30 @@
-# ETL-IND-003-extracao-metas-performance
-
 ---
 título: Extração de Metas de Performance - Google Sheets para Bronze
-tipo: ETL - Processo ETL
+tipo: ETL
+código: ETL-IND-003
 versão: 2.0.0
+data_criação: 2025-01-17
 última_atualização: 2025-01-18
-autor: bruno.chiaramonti@multisete.com
+próxima_revisão: 2025-04-18
+responsável: bruno.chiaramonti@multisete.com
 aprovador: diretoria.ti@m7investimentos.com.br
 tags: [etl, performance, targets, metas, google-sheets, bronze, silver]
 status: aprovado
-dependências:
-  - tipo: modelo
-    ref: [MOD-TAR-001]
-    repo: datawarehouse-docs
-  - tipo: procedimento
-    ref: [QRY-TAR-003]
-    repo: datawarehouse-docs
-  - tipo: etl
-    ref: [ETL-IND-001, ETL-IND-002]
-    repo: datawarehouse-docs
+confidencialidade: interno
 ---
+
+# ETL-IND-003 - Extração de Metas de Performance
 
 ## 1. Objetivo
 
 Extrair dados de metas mensais de performance por assessor e indicador da planilha Google Sheets `m7_performance_targets` para a camada Bronze do Data Warehouse, incluindo validações de integridade de valores e relacionamentos temporais.
+
+### Dependências
+- **Modelo de dados**: [MOD-IND-004 - Performance Targets Silver](../modelos-dados/MOD-IND-004-performance-targets-silver.md)
+- **Procedure**: [QRY-TAR-003 - Bronze to Silver Targets](../../operacional/queries/bronze/QRY-TAR-003-prc_bronze_to_silver_performance_targets.sql)
+- **ETLs**: 
+  - [ETL-IND-001 - Extração de Indicadores](ETL-IND-001-extracao-indicadores-performance.md)
+  - [ETL-IND-002 - Extração de Atribuições](ETL-IND-002-extracao-atribuicoes-performance.md)
 
 ## 2. Escopo e Aplicabilidade
 
@@ -929,65 +930,16 @@ if __name__ == "__main__":
 ```
 
 ### 15.3 Documentação Relacionada
-- **MOD-TAR-001**: Modelo de dados Performance Targets Silver (transformação Bronze → Silver)
-- **QRY-TAR-003**: Procedure prc_bronze_to_silver_performance_targets
+- **MOD-IND-004**: [Modelo de dados Performance Targets Silver](../modelos-dados/MOD-IND-004-performance-targets-silver.md) (transformação Bronze → Silver)
+- **QRY-TAR-003**: [Procedure prc_bronze_to_silver_performance_targets](../../operacional/queries/bronze/QRY-TAR-003-prc_bronze_to_silver_performance_targets.sql)
 
 ### 15.4 Referências
-    @year INT = NULL,
-    @validate_completeness BIT = 1
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET @year = ISNULL(@year, YEAR(GETDATE()));
-    
-    BEGIN TRANSACTION;
-    
-    BEGIN TRY
-        -- 1. Validar completude se requisitado
-        IF @validate_completeness = 1
-        BEGIN
-            DECLARE @incomplete_count INT;
-            
-            SELECT @incomplete_count = COUNT(DISTINCT crm_id + '_' + indicator_code)
-            FROM (
-                SELECT crm_id, indicator_code, COUNT(*) as months
-                FROM bronze.performance_targets
-                WHERE target_year = @year
-                  AND is_processed = 0
-                GROUP BY crm_id, indicator_code
-                HAVING COUNT(*) < 12
-            ) x;
-            
-            IF @incomplete_count > 0
-            BEGIN
-                RAISERROR('Existem %d combinações assessor/indicador com menos de 12 meses', 16, 1, @incomplete_count);
-            END
-        END
-        
-        -- 2. Transformar e validar tipos
-        WITH transformed AS (
-            SELECT 
-                crm_id,
-                indicator_code,
-                'MENSAL' as period_type,
-                CAST(period_start AS DATE) as period_start,
-                CAST(period_end AS DATE) as period_end,
-                CAST(target_value AS DECIMAL(18,4)) as target_value,
-                CAST(stretch_value AS DECIMAL(18,4)) as stretch_target,
-                CAST(minimum_value AS DECIMAL(18,4)) as minimum_target,
-                load_id,
-                load_timestamp
-            FROM bronze.performance_targets
-            WHERE is_processed = 0
-              AND target_year = @year
-              AND TRY_CAST(target_value AS DECIMAL(18,4)) IS NOT NULL
-        )
-    - [Google Sheets API - Batch Operations](https://developers.google.com/sheets/api/guides/batchupdate)
+- [Google Sheets API - Batch Operations](https://developers.google.com/sheets/api/guides/batchupdate)
 - [SQL Server Bulk Insert Best Practices](https://docs.microsoft.com/en-us/sql/relational-databases/import-export/bulk-import-large-amounts-of-data)
-- [ARQ-001 - Arquitetura Performance Tracking]
-- [ETL-001 - Performance Indicators]
-- [ETL-002 - Performance Assignments]
-- [MOD-001 - Modelo Performance Tracking]
+- [ARQ-001 - Arquitetura Performance Tracking](../../estrategico/arquiteturas/ARQ-001-visao-geral-datawarehouse.md)
+- [ETL-IND-001 - Performance Indicators](ETL-IND-001-extracao-indicadores-performance.md)
+- [ETL-IND-002 - Performance Assignments](ETL-IND-002-extracao-atribuicoes-performance.md)
+- [MOD-IND-001 - Sistema Tracking Performance KPIs](../modelos-dados/MOD-IND-001-sistema-tracking-performance-kpis.md)
 
 ---
 
