@@ -1,27 +1,24 @@
-# ETL-003-performance-targets-extraction
+# ETL-IND-003-extracao-metas-performance
 
 ---
 título: Extração de Metas de Performance - Google Sheets para Bronze
 tipo: ETL - Processo ETL
-versão: 1.0.0
-última_atualização: 2025-01-16
-autor: arquitetura.dados@m7investimentos.com.br
+versão: 2.0.0
+última_atualização: 2025-01-18
+autor: bruno.chiaramonti@multisete.com
 aprovador: diretoria.ti@m7investimentos.com.br
 tags: [etl, performance, targets, metas, google-sheets, bronze, silver]
 status: aprovado
 dependências:
-  - tipo: arquitetura
-    ref: [ARQ-001]
-    repo: datawarehouse-docs
   - tipo: modelo
-    ref: [MOD-001]
+    ref: [MOD-TAR-001]
+    repo: datawarehouse-docs
+  - tipo: procedimento
+    ref: [QRY-TAR-003]
     repo: datawarehouse-docs
   - tipo: etl
-    ref: [ETL-001, ETL-002]
+    ref: [ETL-IND-001, ETL-IND-002]
     repo: datawarehouse-docs
-  - tipo: planilha
-    ref: [m7_performance_targets]
-    repo: google-sheets
 ---
 
 ## 1. Objetivo
@@ -79,10 +76,10 @@ Extrair dados de metas mensais de performance por assessor e indicador da planil
 ### 4.2 Componentes
 | Componente | Tecnologia | Função | Configuração |
 |------------|------------|--------|--------------|
-| Extractor | Google Sheets API v4 | Ler 2500+ linhas | Batch de 1000 linhas |
-| Validator | Python/Pandas | Validar metas e períodos | target_rules.py |
-| Transformer | Python/Pandas | Padronizar datas e valores | transform_targets.py |
-| Loader | PyODBC/SQLAlchemy | Bulk insert otimizado | batch_size=500 |
+| Extractor | Google Sheets API v4 | Ler 2500-3000 linhas | Batch de 500 linhas |
+| Validator | Python/Pandas | Validar metas e períodos | Classe PerformanceTargetsETL |
+| Transformer | Python/Pandas | Padronizar datas e valores | Métodos transform internos |
+| Loader | SQLAlchemy/PyODBC | TRUNCATE + INSERT otimizado | batch_size=500 |
 
 ## 5. Processo de Extração
 
@@ -90,17 +87,17 @@ Extrair dados de metas mensais de performance por assessor e indicador da planil
 
 #### Fonte: Google Sheets - m7_performance_targets
 - **Tipo**: Google Sheets via API
-- **ID da Planilha**: `1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww`
+- **ID da Planilha**: `1nm-z2Fbp7pasHx5gmVbm7JPNBRWp4iRElYCbVfEFpOE`
 - **Range**: `'Página1!A:I'` (todas as colunas)
 - **Particularidades**: Volume alto requer paginação
 - **Conexão**: 
   ```python
   # Configuração para volume alto
   SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-  SERVICE_ACCOUNT_FILE = 'path/to/credentials.json'
-  SPREADSHEET_ID = '1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww'
+  SERVICE_ACCOUNT_FILE = 'credentials/google_sheets_api.json'
+  SPREADSHEET_ID = '1nm-z2Fbp7pasHx5gmVbm7JPNBRWp4iRElYCbVfEFpOE'
   RANGE_NAME = 'Página1!A:I'
-  BATCH_SIZE = 1000  # Ler em lotes
+  BATCH_SIZE = 500  # Otimizado para SQL Server
   ```
 
 ### 5.2 Estratégia de Extração
@@ -230,8 +227,8 @@ def add_metadata(df):
 - **Sistema**: SQL Server - M7Medallion
 - **Schema.Tabela**: bronze.performance_targets
 - **Método de carga**: 
-  - DELETE do ano corrente + INSERT (substitui ano)
-  - Ou MERGE para atualizações pontuais
+  - TRUNCATE completo + INSERT (área de staging Bronze)
+  - Bronze não mantém histórico (Silver mantém)
 
 ### 7.2 Estrutura da Tabela Bronze
 ```sql
@@ -894,7 +891,8 @@ if __name__ == "__main__":
 ### 15.2 Configuração JSON
 ```json
 {
-    "spreadsheet_id": "1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww",
+    "etl_name": "ETL-IND-003-performance-targets",
+    "spreadsheet_id": "1nm-z2Fbp7pasHx5gmVbm7JPNBRWp4iRElYCbVfEFpOE",
     "range_name": "Página1!A:I",
     "credentials_path": "credentials/google_sheets_api.json",
     "batch_size": 500,
@@ -930,9 +928,11 @@ if __name__ == "__main__":
 }
 ```
 
-### 15.3 Procedure de Processamento Bronze → Silver
-```sql
-CREATE PROCEDURE bronze.prc_process_targets_to_metadata
+### 15.3 Documentação Relacionada
+- **MOD-TAR-001**: Modelo de dados Performance Targets Silver (transformação Bronze → Silver)
+- **QRY-TAR-003**: Procedure prc_bronze_to_silver_performance_targets
+
+### 15.4 Referências
     @year INT = NULL,
     @validate_completeness BIT = 1
 AS
@@ -982,76 +982,7 @@ BEGIN
               AND target_year = @year
               AND TRY_CAST(target_value AS DECIMAL(18,4)) IS NOT NULL
         )
-        -- 3. Merge com silver
-        MERGE silver.performance_targets AS target
-        USING transformed AS source
-            ON target.crm_id = source.crm_id
-           AND target.indicator_id = (
-                SELECT indicator_id 
-                FROM silver.performance_indicators 
-                WHERE indicator_code = source.indicator_code
-               )
-           AND target.period_start = source.period_start
-        WHEN MATCHED THEN
-            UPDATE SET 
-                target_value = source.target_value,
-                stretch_target = source.stretch_target,
-                minimum_target = source.minimum_target,
-                modified_date = GETDATE()
-        WHEN NOT MATCHED THEN
-            INSERT (crm_id, indicator_id, period_type, period_start, 
-                   period_end, target_value, stretch_target, minimum_target, created_date)
-            VALUES (
-                source.crm_id,
-                (SELECT indicator_id FROM silver.performance_indicators 
-                 WHERE indicator_code = source.indicator_code),
-                source.period_type,
-                source.period_start,
-                source.period_end,
-                source.target_value,
-                source.stretch_target,
-                source.minimum_target,
-                GETDATE()
-            );
-        
-        -- 4. Marcar como processado
-        UPDATE bronze.performance_targets
-        SET is_processed = 1,
-            processing_date = GETDATE(),
-            processing_status = 'SUCCESS'
-        WHERE is_processed = 0
-          AND target_year = @year;
-        
-        -- 5. Gerar relatório de processamento
-        SELECT 
-            'Processamento concluído' as status,
-            COUNT(*) as total_processed,
-            COUNT(DISTINCT crm_id) as assessors,
-            COUNT(DISTINCT indicator_code) as indicators,
-            MIN(period_start) as period_from,
-            MAX(period_start) as period_to
-        FROM bronze.performance_targets
-        WHERE processing_date >= DATEADD(MINUTE, -5, GETDATE());
-        
-        COMMIT TRANSACTION;
-        
-    END TRY
-    BEGIN CATCH
-        ROLLBACK TRANSACTION;
-        
-        UPDATE bronze.performance_targets
-        SET processing_status = 'ERROR',
-            processing_notes = ERROR_MESSAGE()
-        WHERE is_processed = 0
-          AND target_year = @year;
-        
-        THROW;
-    END CATCH
-END;
-```
-
-### 15.4 Referências
-- [Google Sheets API - Batch Operations](https://developers.google.com/sheets/api/guides/batchupdate)
+    - [Google Sheets API - Batch Operations](https://developers.google.com/sheets/api/guides/batchupdate)
 - [SQL Server Bulk Insert Best Practices](https://docs.microsoft.com/en-us/sql/relational-databases/import-export/bulk-import-large-amounts-of-data)
 - [ARQ-001 - Arquitetura Performance Tracking]
 - [ETL-001 - Performance Indicators]
@@ -1061,5 +992,5 @@ END;
 ---
 
 **Documento criado por**: Arquitetura de Dados M7 Investimentos  
-**Data**: 2025-01-16  
+**Data**: 2025-01-18  
 **Revisão**: Mensal ou sob mudança de metas
