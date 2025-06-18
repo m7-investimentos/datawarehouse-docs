@@ -11,7 +11,7 @@ tags: [etl, performance, indicadores, google-sheets, bronze, silver]
 status: aprovado
 dependências:
   - tipo: modelo
-    ref: [MOD-IND-001]
+    ref: [MOD-IND-002]
     repo: datawarehouse-docs
   - tipo: procedimento
     ref: [QRY-IND-003]
