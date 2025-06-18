@@ -104,15 +104,15 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 
 ```
 ┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
-│  Gestão Performance │────▶│ Performance Tracking │────▶│      Power BI       │
+│  Gestão Performance │────▶│ Performance Tracking │────▶│      Power BI      │
 │  (Google Sheets)    │     │      System         │     │   (Dashboards)      │
 └─────────────────────┘     └──────────┬──────────┘     └─────────────────────┘
                                        │                           │
-                            ┌──────────┴──────────┐               │
-                            │                     │               │
-                    ┌───────▼────────┐   ┌───────▼────────┐      │
-                    │ Controladoria  │   │  ML Platform   │      │
-                    │ (Remuneração)  │   │  (Previsões)   │◀─────┘
+                            ┌──────────┴──────────┐                │
+                            │                     │                │
+                    ┌───────▼────────┐   ┌───────▼────────┐        │
+                    │ Controladoria  │   │  ML Platform   │        │
+                    │ (Remuneração)  │   │  (Previsões)   │◀───────┘
                     └────────────────┘   └────────────────┘
 ```
 
@@ -131,45 +131,45 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 ### 4.3 Diagrama de Componentes (C4 - Nível 2)
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│                      Performance Tracking System                    │
-├────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐   │
-│  │ ETL-IND-001     │  │ ETL-IND-002     │  │ ETL-IND-003     │   │
-│  │ (Indicators)    │  │ (Assignments)   │  │ (Targets)       │   │
-│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘   │
-│           │                    │                    │              │
-│           ▼                    ▼                    ▼              │
+┌───────────────────────────────────────────────────────────────────┐
+│                      Performance Tracking System                  │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐    │
+│  │ ETL-IND-001     │  │ ETL-IND-002     │  │ ETL-IND-003     │    │
+│  │ (Indicators)    │  │ (Assignments)   │  │ (Targets)       │    │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘    │
+│           │                    │                    │             │
+│           ▼                    ▼                    ▼             │
 │  ┌─────────────────────────────────────────────────────────────┐  │
-│  │                      BRONZE LAYER                            │  │
-│  │  performance_indicators | performance_assignments | targets  │  │
+│  │                      BRONZE LAYER                           │  │
+│  │  performance_indicators | performance_assignments | targets │  │
 │  └─────────────────────────────┬───────────────────────────────┘  │
-│                                │                                   │
+│                                │                                  │
 │           ┌────────────────────┴────────────────────┐             │
 │           │        SQL Server Procedures            │             │
 │           │  prc_bronze_to_silver_indicators        │             │
 │           │  prc_bronze_to_silver_assignments       │             │
-│           │  prc_bronze_to_silver_targets          │             │
+│           │  prc_bronze_to_silver_targets           │             │
 │           └────────────────────┬────────────────────┘             │
-│                                │                                   │
+│                                │                                  │
 │  ┌─────────────────────────────▼───────────────────────────────┐  │
-│  │                      SILVER LAYER                            │  │
-│  │  performance_indicators | performance_assignments | targets  │  │
+│  │                      SILVER LAYER                           │  │
+│  │  performance_indicators | performance_assignments | targets │  │
 │  └─────────────────────────────┬───────────────────────────────┘  │
-│                                │                                   │
+│                                │                                  │
 │  ┌─────────────────────────────▼───────────────────────────────┐  │
-│  │                       GOLD LAYER                             │  │
-│  │              card_metas (EAV Model)                          │  │
+│  │                       GOLD LAYER                            │  │
+│  │              card_metas (EAV Model)                         │  │
 │  │    vw_card_metas_pivot | vw_weighted_score | vw_rankings    │  │
 │  └─────────────────────────────┬───────────────────────────────┘  │
-│                                │                                   │
+│                                │                                  │
 │  ┌─────────────────────────────▼───────────────────────────────┐  │
-│  │                    PLATINUM LAYER                            │  │
+│  │                    PLATINUM LAYER                           │  │
 │  │          ml_features | api_cache | forecasts                │  │
 │  └─────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-└────────────────────────────────────────────────────────────────────┘
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ## 5. Arquitetura de Dados
@@ -193,28 +193,28 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 
 #### 5.2.1 Processo de Cálculo Gold
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                     GOLD LAYER - Processing Flow                      │
-├──────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  1. Para cada Assessor + Período:                                    │
-│     └─> Buscar indicadores ativos (assignments)                      │
-│                                                                       │
-│  2. Para cada Indicador:                                             │
+┌─────────────────────────────────────────────────────────────────────┐
+│                     GOLD LAYER - Processing Flow                    │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  1. Para cada Assessor + Período:                                   │
+│     └─> Buscar indicadores ativos (assignments)                     │
+│                                                                     │
+│  2. Para cada Indicador:                                            │
 │     ├─> Executar formula SQL do indicador                           │
 │     ├─> Aplicar aggregation_method (SUM, AVG, CUSTOM)               │
-│     └─> Calcular realized_value                                      │
-│                                                                       │
-│  3. Calcular Achievement:                                             │
+│     └─> Calcular realized_value                                     │
+│                                                                     │
+│  3. Calcular Achievement:                                           │
 │     ├─> Normal: (realized / target) × 100                           │
 │     └─> Invertido: (2 - realized/target) × 100                      │
-│                                                                       │
-│  4. Aplicar Pesos (apenas CARD):                                     │
-│     └─> weighted_achievement = achievement × weight                   │
-│                                                                       │
+│                                                                     │
+│  4. Aplicar Pesos (apenas CARD):                                    │
+│     └─> weighted_achievement = achievement × weight                 │
+│                                                                     │
 │  5. Gerar registro EAV em gold.card_metas                           │
-│                                                                       │
-└──────────────────────────────────────────────────────────────────────┘
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 #### 5.2.2 Estrutura Gold - Modelo EAV
@@ -319,27 +319,27 @@ SILVER TABLES                           GOLD PROCESSING
 ┌──────────────────┐
 │ Indicators       │     ┌─────────────────────────────────────────────┐
 │ ┌──────────────┐ │     │ 1. LOOP: Para cada assessor + período       │
-│ │ CAPT_LIQ     │ │────▶│    Clever Mota (20471) + Jan/2025          │
+│ │ CAPT_LIQ     │ │────▶│    Clever Mota (20471) + Jan/2025           │
 │ │ Formula: ... │ │     └─────────────────────────┬───────────────────┘
 │ │ Method: SUM  │ │                               │
 │ └──────────────┘ │     ┌─────────────────────────▼───────────────────┐
 └──────────────────┘     │ 2. BUSCAR: Indicadores atribuídos           │
                          │    - CAPT_LIQ (CARD, 40%)                   │
-┌──────────────────┐     │    - CLIENT_300K_CDI (CARD, 10%)           │
-│ Assignments     │────▶│    - ABERT_300K (CARD, 20%)                │
-│ ┌──────────────┐ │     │    - IEA (CARD, 30%)                       │
-│ │ 20471        │ │     │    - NPS_NOTA (GATILHO, 0%)               │
+┌──────────────────┐     │    - CLIENT_300K_CDI (CARD, 10%)            │
+│ Assignments      │────▶│    - ABERT_300K (CARD, 20%)                 │
+│ ┌──────────────┐ │     │    - IEA (CARD, 30%)                        │
+│ │ 20471        │ │     │    - NPS_NOTA (GATILHO, 0%)                 │
 │ │ Weights...   │ │     └─────────────────────────┬───────────────────┘
 │ └──────────────┘ │                               │
 └──────────────────┘     ┌─────────────────────────▼───────────────────┐
                          │ 3. EXECUTAR: Para cada indicador            │
 ┌──────────────────┐     │                                             │
-│ Targets         │     │ CAPT_LIQ:                                   │
-│ ┌──────────────┐ │────▶│   SQL: SELECT captacao_liquida_total       │
-│ │ 20471        │ │     │        FROM gold.captacao_liquida_assessor │
-│ │ Jan: 500K    │ │     │        WHERE crm_id = '20471'              │
-│ └──────────────┘ │     │        AND data BETWEEN '2025-01-01'       │
-└──────────────────┘     │                     AND '2025-01-31'       │
+│ Targets          │     │ CAPT_LIQ:                                   │  
+│ ┌──────────────┐ │────▶│   SQL: SELECT captacao_liquida_total        │
+│ │ 20471        │ │     │        FROM gold.captacao_liquida_assessor  │
+│ │ Jan: 500K    │ │     │        WHERE crm_id = '20471'               │
+│ └──────────────┘ │     │        AND data BETWEEN '2025-01-01'        │
+└──────────────────┘     │                     AND '2025-01-31'        │
                          │   Result: 450.000                           │
                          │   Target: 500.000                           │
                          │   Achievement: 90%                          │
@@ -348,11 +348,11 @@ SILVER TABLES                           GOLD PROCESSING
                                                    │
 FACT TABLES              ┌─────────────────────────▼───────────────────┐
 ┌──────────────────┐     │ 4. GRAVAR: Em formato EAV                   │
-│ Captação        │     │                                             │
-│ Clientes        │────▶│ gold.card_metas:                            │
-│ NPS             │     │ ┌─────────────────────────────────────┐     │
-│ Etc...          │     │ │ entity_id: 20471                    │     │
-└──────────────────┘     │ │ attribute_code: CAPT_LIQ           │     │
+│ Captação         │     │                                             │
+│ Clientes         │────▶│ gold.card_metas:                            │
+│ NPS              │     │ ┌─────────────────────────────────────┐     │
+│ Etc...           │     │ │ entity_id: 20471                    │     │
+└──────────────────┘     │ │ attribute_code: CAPT_LIQ            │     │
                          │ │ period: 2025-01                     │     │
                          │ │ target_value: 500000                │     │
                          │ │ realized_value: 450000              │     │
@@ -365,12 +365,12 @@ FACT TABLES              ┌─────────────────�
                          ┌─────────────────────────▼───────────────────┐
                          │ 5. VIEWS: Transformar EAV para consumo      │
                          │                                             │
-                         │ vw_card_metas_pivot:                       │
-                         │ ┌──────┬─────────┬────────────┬────┐       │
-                         │ │CRM_ID│CAPT_LIQ │CLIENT_300K │... │       │
-                         │ ├──────┼─────────┼────────────┼────┤       │
-                         │ │20471 │   90%   │    90%     │... │       │
-                         │ └──────┴─────────┴────────────┴────┘       │
+                         │ vw_card_metas_pivot:                        │
+                         │ ┌──────┬─────────┬────────────┬────┐        │
+                         │ │CRM_ID│CAPT_LIQ │CLIENT_300K │... │        │
+                         │ ├──────┼─────────┼────────────┼────┤        │
+                         │ │20471 │   90%   │    90%     │... │        │
+                         │ └──────┴─────────┴────────────┴────┘        │
                          │                                             │
                          │ Score Final: 100.5%                         │
                          └─────────────────────────────────────────────┘
@@ -508,39 +508,39 @@ Para cada combinação Assessor + Indicador + Período:
 ### 8.2 Diagrama de Deployment
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Google Cloud                          │
+┌────────────────────────────────────────────────────────┐
+│                    Google Cloud                        │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │           Google Sheets (3 planilhas)            │   │
+│  │           Google Sheets (3 planilhas)           │   │
 │  └─────────────────────────┬───────────────────────┘   │
-│                            │ API v4                      │
-└────────────────────────────┼────────────────────────────┘
+│                            │ API v4                    │
+└────────────────────────────┼───────────────────────────┘
                              │
-┌────────────────────────────┼────────────────────────────┐
-│                 M7 Infrastructure                        │
-│                            │                             │
+┌────────────────────────────┼───────────────────────────┐
+│                 M7 Infrastructure                      │
+│                            │                           │
 │  ┌─────────────────────────▼─────────────────────────┐ │
-│  │              ETL Server (Python)                   │ │
+│  │              ETL Server (Python)                  │ │
 │  │  • etl_001_indicators.py                          │ │
 │  │  • etl_002_assignments.py                         │ │
 │  │  • etl_003_targets.py                             │ │
 │  └─────────────────────────┬─────────────────────────┘ │
-│                            │                             │
+│                            │                           │
 │  ┌─────────────────────────▼─────────────────────────┐ │
 │  │         SQL Server (M7Medallion Database)         │ │
 │  │  ┌─────────────────────────────────────────────┐  │ │
 │  │  │ Bronze → Silver → Gold → Platinum           │  │ │
 │  │  └─────────────────────────────────────────────┘  │ │
 │  └─────────────────────────┬─────────────────────────┘ │
-│                            │                             │
+│                            │                           │
 │  ┌─────────────────────────┴─────────────────────────┐ │
-│  │              Consumers                             │ │
+│  │              Consumers                            │ │
 │  │  • Power BI Service                               │ │
 │  │  • ML Platform                                    │ │
 │  │  • Custom Applications                            │ │
 │  └───────────────────────────────────────────────────┘ │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
+│                                                        │
+└────────────────────────────────────────────────────────┘
 ```
 
 ### 8.3 Requisitos de Infraestrutura
