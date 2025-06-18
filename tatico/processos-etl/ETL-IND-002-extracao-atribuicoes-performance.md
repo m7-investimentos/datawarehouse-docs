@@ -1,45 +1,44 @@
-# ETL-002-performance-assignments-extraction
+# ETL-IND-002-extracao-atribuicoes-performance
 
 ---
 título: Extração de Atribuições de Performance - Google Sheets para Bronze
 tipo: ETL - Processo ETL
-versão: 1.0.0
-última_atualização: 2025-01-16
-autor: arquitetura.dados@m7investimentos.com.br
+versão: 2.0.0
+última_atualização: 2025-01-18
+autor: bruno.chiaramonti@multisete.com
 aprovador: diretoria.ti@m7investimentos.com.br
 tags: [etl, performance, assignments, google-sheets, bronze, silver]
 status: aprovado
 dependências:
-  - tipo: arquitetura
-    ref: [ARQ-001]
-    repo: datawarehouse-docs
   - tipo: modelo
-    ref: [MOD-001]
+    ref: [MOD-ASS-001]
+    repo: datawarehouse-docs
+  - tipo: procedimento
+    ref: [QRY-ASS-003]
     repo: datawarehouse-docs
   - tipo: etl
-    ref: [ETL-001]
+    ref: [ETL-IND-001]
     repo: datawarehouse-docs
-  - tipo: planilha
-    ref: [m7_performance_assignments]
-    repo: google-sheets
 ---
 
 ## 1. Objetivo
 
-Extrair dados de atribuições de indicadores de performance por assessor da planilha Google Sheets `m7_performance_assignments` para a camada Bronze do Data Warehouse, incluindo validações de integridade de pesos e relacionamentos.
+Extrair dados de atribuições de indicadores de performance por assessor da planilha Google Sheets `m7_performance_assignments` para a camada Bronze do Data Warehouse, preservando todos os dados originais sem transformações complexas. Este ETL é responsável apenas pela extração e carga inicial dos dados brutos, incluindo validações básicas de integridade de pesos e relacionamentos, preparando-os para posterior processamento pela procedure de transformação Bronze → Silver.
 
 ## 2. Escopo e Aplicabilidade
 
 ### 2.1 Escopo
 - **Fonte de dados**: Google Sheets - m7_performance_assignments
 - **Destino**: M7Medallion.bronze.performance_assignments
-- **Volume esperado**: ~200-500 registros
+- **Volume esperado**: 200-500 registros por execução
 - **Frequência**: Diária ou sob demanda (mudanças trimestrais)
 
 ### 2.2 Fora de Escopo
+- Transformação complexa de tipos de dados (responsabilidade da procedure Bronze → Silver)
 - Execução de cálculos de performance
-- Processamento de metas (targets)
+- Processamento de metas (coberto por ETL-IND-003)
 - Validação de fórmulas SQL dos indicadores
+- Inserção direta na camada Silver
 
 ## 3. Pré-requisitos e Dependências
 
@@ -51,10 +50,13 @@ Extrair dados de atribuições de indicadores de performance por assessor da pla
 - **Recursos computacionais**: Mínimos (< 5MB de dados)
 - **Software/Ferramentas**: 
   - Python 3.8+
-  - google-api-python-client
-  - pandas
-  - numpy
-  - pyodbc ou sqlalchemy
+  - google-api-python-client==2.95.0
+  - pandas==2.0.3
+  - numpy==1.24.3
+  - pyodbc==4.0.39
+  - sqlalchemy==2.0.19
+  - tenacity==8.2.2 (retry logic)
+  - python-dotenv==1.0.0
 
 ### 3.2 Negócio
 - **Aprovações necessárias**: 
@@ -88,45 +90,47 @@ Extrair dados de atribuições de indicadores de performance por assessor da pla
 
 #### Fonte: Google Sheets - m7_performance_assignments
 - **Tipo**: Google Sheets via API
-- **ID da Planilha**: `1nm-z2Fbp7pasHx5gmVbm7JPNBRWp4iRElYCbVfEFpOE`
+- **ID da Planilha**: `1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww`
 - **Range**: `'Página1!A:J'` (todas as colunas)
 - **Conexão**: 
   ```python
   # Configuração
   SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
   SERVICE_ACCOUNT_FILE = 'path/to/credentials.json'
-  SPREADSHEET_ID = '1nm-z2Fbp7pasHx5gmVbm7JPNBRWp4iRElYCbVfEFpOE'
+  SPREADSHEET_ID = '1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww'
   RANGE_NAME = 'Página1!A:J'
   ```
 
 ### 5.2 Estratégia de Extração
-- **Tipo**: Full (sempre lê toda a planilha)
-- **Controle de watermark**: timestamp de extração + hash do conteúdo
-- **Validação prévia**: Verificar se há pelo menos 10 linhas (mínimo esperado)
+- **Tipo**: Full Load (substitui todos os dados a cada execução)
+- **Controle de watermark**: load_timestamp no Bronze
+- **Método**: TRUNCATE + INSERT
+- **Validação prévia**: Mínimo 50 registros esperados
+- **Retry**: 3 tentativas com backoff exponencial (4-60 segundos)
 
 ## 6. Processo de Transformação
 
 ### 6.1 Limpeza de Dados
 | Validação | Regra | Ação se Falha |
 |-----------|-------|---------------|
-| Campos obrigatórios | crm_id, indicator_code, indicator_type NOT NULL | Quarentena |
-| Formato crm_id | Padrão AAI + números (ex: AAI001) | Log warning + aceitar |
-| indicator_type válido | IN ('CARD', 'GATILHO', 'KPI', 'PPI', 'METRICA') | Quarentena |
-| Weight para CARD | Entre 0.01 e 100.00 | Quarentena |
-| Weight para não-CARD | Deve ser 0.00 ou NULL | Ajustar para 0.00 |
-| valid_from formato | Data válida YYYY-MM-DD | Quarentena |
-| valid_to lógica | NULL ou > valid_from | Quarentena |
+| Campos obrigatórios | crm_id, indicator_code, indicator_type NOT NULL | Rejeitar registro |
+| Linhas vazias consecutivas | 5 ou mais linhas sem crm_id | Parar leitura |
+| indicator_type válido | IN ('CARD', 'GATILHO', 'KPI', 'PPI', 'METRICA') | Log warning |
+| Weight para CARD | Deve ser numérico > 0 | Log warning |
+| Weight para não-CARD | Ajustar para 0.00 | Ajuste automático |
 
 ### 6.2 Transformações Aplicadas
 
 #### T1: Padronização de Códigos e Tipos
+**Descrição**: Padroniza códigos para formato consistente
+**Lógica**:
 ```python
-def standardize_assignments(df):
+def standardize_assignments(self, df: pd.DataFrame) -> pd.DataFrame:
     # Padronizar crm_id
     df['crm_id'] = df['crm_id'].str.upper().str.strip()
     
     # Padronizar indicator_code
-    df['indicator_code'] = df['indicator_code'].str.upper().str.replace(' ', '_')
+    df['indicator_code'] = df['indicator_code'].str.upper().str.replace(' ', '_').str.strip()
     
     # Padronizar indicator_type
     df['indicator_type'] = df['indicator_type'].str.upper().str.strip()
@@ -137,23 +141,35 @@ def standardize_assignments(df):
     # Para não-CARD, garantir weight = 0
     df.loc[df['indicator_type'] != 'CARD', 'weight'] = 0.0
     
+    # Preencher campos vazios
+    text_columns = ['nome_assessor', 'created_by', 'approved_by', 'comments']
+    for col in text_columns:
+        if col in df.columns:
+            df[col] = df[col].fillna('')
+    
     return df
 ```
+**Campos afetados**: crm_id, indicator_code, indicator_type, weight
 
 #### T2: Validação de Soma de Pesos
+**Descrição**: Valida que soma dos pesos CARD = 100% por assessor/período
+**Lógica**:
 ```python
-def validate_weights(df):
-    """Valida que soma dos pesos CARD = 100% por assessor/período"""
+def validate_weights(self, df: pd.DataFrame) -> List[Dict]:
     validation_errors = []
     
-    # Filtrar apenas registros CARD ativos
+    # Filtrar apenas registros CARD ativos (sem valid_to)
     card_df = df[(df['indicator_type'] == 'CARD') & 
-                 (df['valid_to'].isna())]
+                 (df['valid_to'].isna() | (df['valid_to'] == ''))]
+    
+    if len(card_df) == 0:
+        self.logger.warning("Nenhum indicador CARD ativo encontrado")
+        return validation_errors
     
     # Agrupar por assessor e valid_from
     weight_sums = card_df.groupby(['crm_id', 'valid_from'])['weight'].sum()
     
-    # Verificar somas diferentes de 100
+    # Verificar somas diferentes de 100 (com tolerância de 0.01)
     invalid_weights = weight_sums[abs(weight_sums - 100.0) > 0.01]
     
     for (assessor, valid_from), total_weight in invalid_weights.items():
@@ -161,18 +177,25 @@ def validate_weights(df):
             'error_type': 'INVALID_WEIGHT_SUM',
             'crm_id': assessor,
             'valid_from': valid_from,
-            'total_weight': total_weight,
-            'expected': 100.0
+            'total_weight': float(total_weight),
+            'expected': 100.0,
+            'deviation': abs(float(total_weight) - 100.0)
         })
     
     return validation_errors
 ```
+**Regra**: Soma de pesos CARD deve ser 100% ± 0.01
 
 #### T3: Validação de Relacionamentos
+**Descrição**: Valida que todos indicator_codes existem na tabela de indicadores
+**Lógica**:
 ```python
-def validate_relationships(df, indicators_df):
-    """Valida que todos indicator_codes existem em indicators"""
+def validate_relationships(self, df: pd.DataFrame, indicators_df: pd.DataFrame) -> List[Dict]:
     validation_errors = []
+    
+    if indicators_df.empty:
+        self.logger.warning("Sem indicadores para validar relacionamentos")
+        return validation_errors
     
     # Obter lista de códigos válidos
     valid_codes = set(indicators_df['indicator_code'].unique())
@@ -190,99 +213,96 @@ def validate_relationships(df, indicators_df):
     
     return validation_errors
 ```
+**Campos afetados**: indicator_exists (flag de validação)
 
 #### T4: Enriquecimento de Metadados
+**Descrição**: Adiciona metadados para rastreabilidade e detecção de mudanças
+**Lógica**:
 ```python
-def add_metadata(df):
-    df['extraction_timestamp'] = datetime.now()
-    df['source_file'] = 'google_sheets:m7_performance_assignments'
-    df['row_hash'] = df.apply(lambda x: hashlib.md5(
-        f"{x['crm_id']}_{x['indicator_code']}_{x['valid_from']}".encode()
-    ).hexdigest(), axis=1)
-    
-    # Adicionar flag de vigência
-    df['is_current'] = df['valid_to'].isna()
-    
-    return df
+# Número da linha original na planilha
+df['row_number'] = range(2, len(df) + 2)  # Começa em 2 (pula header)
+
+# Hash MD5 para detectar mudanças
+hash_columns = ['crm_id', 'indicator_code', 'valid_from']
+df['row_hash'] = df[hash_columns].apply(
+    lambda x: hashlib.md5('_'.join(str(x[col]) for col in hash_columns).encode()).hexdigest(),
+    axis=1
+)
+
+# Adicionar flag de vigência
+df['is_current'] = (df['valid_to'].isna() | (df['valid_to'] == '')).astype(int)
+
+# Validação de soma de pesos por assessor/período
+df['weight_sum_valid'] = 1  # Default: válido
+df['indicator_exists'] = 1  # Default: existe
+
+# Marcar registros com erro de peso
+for error in self.validation_errors:
+    if error['error_type'] == 'INVALID_WEIGHT_SUM':
+        mask = (df['crm_id'] == error['crm_id']) & \
+               (df['valid_from'] == error['valid_from']) & \
+               (df['indicator_type'] == 'CARD')
+        df.loc[mask, 'weight_sum_valid'] = 0
 ```
+**Campos adicionados**: row_number, row_hash, is_current, weight_sum_valid, indicator_exists
 
 ## 7. Processo de Carga
 
 ### 7.1 Destino
 - **Sistema**: SQL Server - M7Medallion
 - **Schema.Tabela**: bronze.performance_assignments
-- **Método de carga**: MERGE (upsert baseado em chave natural)
+- **Método de carga**: TRUNCATE + INSERT (Full Load)
 
-### 7.2 Estrutura da Tabela Bronze
-```sql
-CREATE TABLE bronze.performance_assignments (
-    load_id INT IDENTITY(1,1) PRIMARY KEY,
-    load_timestamp DATETIME NOT NULL DEFAULT GETDATE(),
-    load_source VARCHAR(200) NOT NULL DEFAULT 'GoogleSheets:m7_performance_assignments',
-    
-    -- Campos da planilha
-    crm_id VARCHAR(MAX),
-    nome_assessor VARCHAR(MAX),
-    indicator_code VARCHAR(MAX),
-    indicator_type VARCHAR(MAX),
-    weight VARCHAR(MAX),
-    valid_from VARCHAR(MAX),
-    valid_to VARCHAR(MAX),
-    created_by VARCHAR(MAX),
-    approved_by VARCHAR(MAX),
-    comments VARCHAR(MAX),
-    
-    -- Metadados de controle
-    row_number INT,
-    row_hash VARCHAR(32),
-    is_current BIT,
-    is_processed BIT DEFAULT 0,
-    processing_date DATETIME NULL,
-    processing_status VARCHAR(50) NULL,
-    processing_notes VARCHAR(MAX) NULL,
-    
-    -- Validações
-    weight_sum_valid BIT,
-    indicator_exists BIT,
-    validation_errors VARCHAR(MAX)
-);
-
--- Índice para performance
-CREATE INDEX IX_bronze_assignments_lookup 
-ON bronze.performance_assignments (crm_id, indicator_code, valid_from)
-WHERE is_processed = 0;
-```
+### 7.2 Estratégia de Carga
+- **Modo**: Batch (carga completa)
+- **Transacional**: Sim (TRUNCATE + INSERT em transação)
+- **Rollback**: Automático em caso de erro
+- **Campos de controle adicionados**:
+  - load_id: Auto-incremento
+  - load_timestamp: Data/hora da carga
+  - load_source: Identificador da fonte
+  - is_processed: Flag para Bronze → Silver
+  - processing_date: Quando foi processado
+  - processing_status: Status do processamento
+  - processing_notes: Observações do processamento
+  - weight_sum_valid: Indica se soma de pesos é válida
+  - indicator_exists: Indica se indicador existe
+  - validation_errors: JSON com erros de validação
 
 ## 8. Tratamento de Erros
 
 ### 8.1 Tipos de Erro e Ações
 | Tipo de Erro | Detecção | Ação | Notificação |
 |--------------|----------|------|-------------|
-| Google Sheets indisponível | API timeout/401/403 | Retry 3x com backoff | Email + Log |
-| Planilha vazia | < 10 registros | Parar execução | Email urgente |
-| Soma pesos ≠ 100% | Validação T2 | Carregar mas marcar erro | Email gestão |
-| Indicator_code inválido | Validação T3 | Carregar mas marcar erro | Warning log |
-| Assessor duplicado/período | Chave única | Log último valor | Warning log |
+| Google Sheets indisponível | HttpError 404/403/429 | Retry 3x com backoff exponencial | Log error |
+| Credenciais inválidas | Authentication error | Parar execução | Email admin |
+| Planilha com poucos dados | < 50 registros | Abortar carga | Log warning |
+| Soma pesos ≠ 100% | Validação de pesos | Carregar com flag weight_sum_valid=0 | Log detalhado |
+| Indicator_code inválido | JOIN com indicators | Carregar com flag indicator_exists=0 | Log warning |
+| Conexão DB perdida | pyodbc.Error | Retry 1x → Falha | Log error |
+| Transação falhou | Rollback automático | Registrar em audit | Log error |
 
-### 8.2 Processo de Retry e Recuperação
+### 8.2 Processo de Retry
+- **Tentativas**: 3 para Google Sheets API
+- **Intervalo**: Exponential backoff (4, 8, 16... até 60 segundos)
+- **Timeout máximo**: 5 minutos total
+- **Implementação com tenacity**:
 ```python
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=60),
-    retry=retry_if_exception_type((HttpError, ConnectionError))
+    retry=retry_if_exception_type(HttpError)
 )
-def extract_from_sheets():
-    try:
-        service = build('sheets', 'v4', credentials=creds)
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=RANGE_NAME
-        ).execute()
-        return result.get('values', [])
-    except HttpError as e:
-        if e.resp.status == 404:
-            raise Exception("Planilha não encontrada - verificar ID")
-        raise
+def extract(self) -> pd.DataFrame:
+    service = build('sheets', 'v4', credentials=self.credentials)
+    sheet = service.spreadsheets()
+    result = sheet.values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=RANGE_NAME
+    ).execute()
+    # ... processamento dos dados
 ```
 
 ## 9. Monitoramento e Auditoria
@@ -295,190 +315,141 @@ def extract_from_sheets():
 | Taxa de erro validação | < 5% | > 10% |
 | Assessores com peso inválido | = 0 | > 0 |
 
-### 9.2 Logs Detalhados
-```python
-# Estrutura de logging
-logger = logging.getLogger('ETL-002')
-logger.info(f"===== INICIANDO ETL-002 =====")
-logger.info(f"Timestamp: {datetime.now()}")
-logger.info(f"Planilha: {SPREADSHEET_ID}")
+### 9.2 Logs
+- **Nível de log**: INFO (DEBUG se --debug flag)
+- **Localização**: logs/ETL-IND-002_YYYYMMDD_HHMMSS.log
+- **Retenção**: 30 dias
+- **Formato**:
+  ```
+  [2025-01-17 15:10:50] [INFO] [ETL-IND-002] Iniciando extração de 1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww
+  [2025-01-17 15:10:52] [INFO] [ETL-IND-002] Extraídos 287 registros válidos de atribuições
+  [2025-01-17 15:10:53] [WARNING] [ETL-IND-002] 5 erros de validação de peso encontrados
+  [2025-01-17 15:10:53] [WARNING] [ETL-IND-002] 2 códigos de indicador inválidos
+  [2025-01-17 15:10:55] [INFO] [ETL-IND-002] Carregados 287 registros no Bronze
+  ```
 
-# Durante processamento
-logger.info(f"Registros extraídos: {len(df)}")
-logger.info(f"Assessores únicos: {df['crm_id'].nunique()}")
-logger.info(f"Indicadores únicos: {df['indicator_code'].nunique()}")
-
-# Validações
-if validation_errors:
-    logger.warning(f"Validações com erro: {len(validation_errors)}")
-    for error in validation_errors[:5]:  # Primeiros 5
-        logger.warning(f"  - {error}")
-
-# Final
-logger.info(f"Registros carregados: {records_loaded}")
-logger.info(f"===== ETL-002 CONCLUÍDO =====")
-```
-
-### 9.3 Auditoria Detalhada
-```sql
--- Tabela específica para auditoria de assignments
-CREATE TABLE audit.assignment_weight_history (
-    audit_id INT IDENTITY(1,1) PRIMARY KEY,
-    audit_timestamp DATETIME DEFAULT GETDATE(),
-    crm_id VARCHAR(20),
-    valid_from DATE,
-    indicator_type VARCHAR(20),
-    total_weight DECIMAL(5,2),
-    is_valid BIT,
-    indicators_detail NVARCHAR(MAX), -- JSON com breakdown
-    etl_load_id INT
-);
-
--- Procedure para registrar validações
-CREATE PROCEDURE audit.prc_log_assignment_validation
-    @load_id INT
-AS
-BEGIN
-    INSERT INTO audit.assignment_weight_history
-    SELECT 
-        GETDATE(),
-        crm_id,
-        valid_from,
-        'CARD',
-        SUM(CAST(weight AS DECIMAL(5,2))),
-        CASE WHEN ABS(SUM(CAST(weight AS DECIMAL(5,2))) - 100) < 0.01 
-             THEN 1 ELSE 0 END,
-        (SELECT indicator_code, weight 
-         FROM bronze.performance_assignments b2
-         WHERE b2.crm_id = b1.crm_id
-           AND b2.valid_from = b1.valid_from
-           AND b2.indicator_type = 'CARD'
-           AND b2.load_id = @load_id
-         FOR JSON AUTO),
-        @load_id
-    FROM bronze.performance_assignments b1
-    WHERE indicator_type = 'CARD'
-      AND load_id = @load_id
-    GROUP BY crm_id, valid_from;
-END;
-```
+### 9.3 Auditoria
+- **Tabela de controle**: audit.etl_executions (se existir)
+- **Informações registradas**:
+  - etl_name: 'ETL-IND-002-performance-assignments'
+  - execution_start/end: Timestamps
+  - records_read: Total extraído do Sheets
+  - records_written: Total inserido no Bronze
+  - records_error: Total de erros de validação
+  - status: SUCCESS/ERROR/WARNING
+  - details: JSON com detalhes da execução incluindo:
+    - weight_errors: Quantidade de erros de soma de peso
+    - relationship_errors: Quantidade de códigos inválidos
 
 ## 10. Qualidade de Dados
 
 ### 10.1 Validações Pós-Carga
 | Validação | Query/Método | Threshold | Ação se Falha |
 |-----------|--------------|-----------|---------------|
-| Todos assessores têm indicadores | COUNT(DISTINCT crm_id) | > 30 | Verificar dados fonte |
-| Soma pesos CARD = 100% | Query complexa | 100% compliance | Notificar gestão |
-| Indicator codes válidos | JOIN com indicators | 100% match | Revisar novos códigos |
-| Sem duplicatas ativas | Unique check | 0 duplicatas | Investigar |
+| Assessores únicos carregados | SELECT COUNT(DISTINCT crm_id) | > 30 | Verificar filtros |
+| Assessores com peso inválido | % com soma ≠ 100 | = 0 | Notificar gestão |
+| Indicadores órfãos | % sem correspondência | < 5% | Executar ETL-IND-001 |
+| Registros processados | COUNT(*) | > 50 | Investigar fonte |
 
-### 10.2 Queries de Validação
-```sql
--- Validar soma de pesos por assessor
-WITH weight_check AS (
-    SELECT 
-        crm_id,
-        valid_from,
-        SUM(CAST(weight AS DECIMAL(5,2))) as total_weight,
-        COUNT(*) as indicator_count
-    FROM bronze.performance_assignments
-    WHERE indicator_type = 'CARD'
-      AND valid_to IS NULL
-      AND is_processed = 0
-    GROUP BY crm_id, valid_from
-)
-SELECT 
-    crm_id,
-    valid_from,
-    total_weight,
-    CASE WHEN ABS(total_weight - 100.0) < 0.01 
-         THEN 'OK' 
-         ELSE 'ERRO' END as status
-FROM weight_check
-WHERE ABS(total_weight - 100.0) >= 0.01
-ORDER BY crm_id;
-
--- Verificar códigos órfãos
-SELECT DISTINCT 
-    a.indicator_code,
-    COUNT(DISTINCT a.crm_id) as assessores_afetados
-FROM bronze.performance_assignments a
-LEFT JOIN bronze.performance_indicators i
-    ON a.indicator_code = i.indicator_code
-WHERE i.indicator_code IS NULL
-  AND a.is_processed = 0
-GROUP BY a.indicator_code;
+### 10.2 Validação Pós-Carga
+```python
+def post_load_validations(self):
+    """Executa validações após carga no Bronze"""
+    with self.db_engine.connect() as conn:
+        # Verificar assessores únicos
+        result = conn.execute(text("""
+            SELECT COUNT(DISTINCT crm_id) as assessores_unicos
+            FROM bronze.performance_assignments
+            WHERE load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_assignments)
+        """)).fetchone()
+        
+        self.logger.info(f"Assessores únicos carregados: {result.assessores_unicos}")
+        
+        # Verificar soma de pesos inválidos
+        result = conn.execute(text("""
+            WITH weight_check AS (
+                SELECT 
+                    crm_id,
+                    valid_from,
+                    SUM(CAST(weight AS DECIMAL(5,2))) as total_weight
+                FROM bronze.performance_assignments
+                WHERE indicator_type = 'CARD'
+                  AND (valid_to IS NULL OR valid_to = '')
+                  AND load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_assignments)
+                GROUP BY crm_id, valid_from
+            )
+            SELECT COUNT(*) as assessores_com_erro
+            FROM weight_check
+            WHERE ABS(total_weight - 100.0) >= 0.01
+        """)).fetchone()
+        
+        if result.assessores_com_erro > 0:
+            self.logger.warning(f"Assessores com soma de pesos inválida: {result.assessores_com_erro}")
 ```
 
 ## 11. Agendamento e Triggers
 
 ### 11.1 Schedule
-- **Ferramenta**: SQL Server Agent / Airflow
-- **Frequência**: 
-  - Diária às 23:00 (capturar mudanças)
-  - Sob demanda via procedure
-- **Dependências**: 
-  - ETL-001 deve executar com sucesso primeiro
-  - Antes do ETL-003 (targets)
+- **Ferramenta**: Execução manual ou via orchestrador
+- **Expressão**: Não agendado (sob demanda)
+- **Timezone**: America/Sao_Paulo
+- **Dependências**: ETL-IND-001 deve executar antes
 
-### 11.2 Comando de Execução Manual
-```sql
--- Executar ETL manualmente
-EXEC bronze.prc_extract_performance_assignments
-    @force_reload = 1,
-    @validate_weights = 1,
-    @send_notifications = 1;
-```
+### 11.2 Triggers e Execução
+- **Execução direta**:
+  ```bash
+  python etl_002_assignments.py
+  ```
+- **Com parâmetros**:
+  ```bash
+  python etl_002_assignments.py --debug --dry-run
+  python etl_002_assignments.py --validate-only
+  ```
+- **Via orchestrador**:
+  ```bash
+  ./run_etl.sh  # Menu interativo
+  python run_pipeline.py 002  # Pipeline completo
+  ```
 
 ### 11.3 Integração com Pipeline
-```python
-# Airflow DAG example
-assignment_etl = PythonOperator(
-    task_id='etl_002_assignments',
-    python_callable=run_assignments_etl,
-    depends_on_past=False,
-    retries=2,
-    retry_delay=timedelta(minutes=5)
-)
+```bash
+# Executar todos os ETLs em sequência
+python run_all_etls.py
 
-# Dependências
-indicators_etl >> assignment_etl >> targets_etl
+# Executar pipeline completo (ETL + Procedures)
+python run_full_pipeline.py
 ```
 
 ## 12. Manutenção e Operação
 
 ### 12.1 Procedimentos Operacionais
-- **Re-extração completa**: 
+- **Reprocessamento**: Script sempre faz TRUNCATE + INSERT (full reload)
+- **Limpeza de logs**: Remover arquivos > 30 dias em logs/
+- **Backup da planilha**: Download manual trimestral recomendado
+- **Verificação de integridade**:
   ```sql
-  EXEC bronze.prc_reprocess_assignments @months_back = 3;
+  -- Verificar última carga
+  SELECT TOP 10 * FROM bronze.performance_assignments
+  ORDER BY load_timestamp DESC;
+  
+  -- Verificar pesos por assessor
+  SELECT crm_id, SUM(CAST(weight AS DECIMAL(5,2))) as total
+  FROM bronze.performance_assignments
+  WHERE indicator_type = 'CARD' AND is_processed = 0
+  GROUP BY crm_id;
   ```
-- **Limpeza**: Bronze mantém 30 dias de histórico
-- **Correção de pesos**: Interface para ajustes manuais
 
 ### 12.2 Troubleshooting Comum
 | Problema | Sintoma | Diagnóstico | Solução |
 |----------|---------|-------------|---------|
+| ModuleNotFoundError | Import error | pip list | pip install -r requirements.txt |
+| Planilha não encontrada | HTTP 404 | Verificar URL no navegador | Atualizar SPREADSHEET_ID |
+| Poucos registros | < 50 carregados | Verificar filtros na planilha | Revisar dados fonte |
 | Pesos não somam 100% | Erro validação | Query weight_check | Ajustar na planilha |
 | Assessor sem indicadores | Missing data | Check assignments | Verificar com RH |
 | Performance lenta | > 5 min execução | Check índices | Rebuild índices |
 | Indicador novo não aparece | Validation fail | Check indicators ETL | Rodar ETL-001 primeiro |
 
-### 12.3 Scripts de Manutenção
-```sql
--- Limpar dados antigos
-DELETE FROM bronze.performance_assignments
-WHERE load_timestamp < DATEADD(DAY, -30, GETDATE())
-  AND is_processed = 1;
-
--- Reprocessar registros com erro
-UPDATE bronze.performance_assignments
-SET is_processed = 0,
-    processing_status = NULL,
-    processing_notes = 'Reprocessamento manual'
-WHERE processing_status = 'ERROR'
-  AND load_timestamp > DATEADD(DAY, -7, GETDATE());
-```
 
 ## 13. Segurança e Compliance
 
@@ -496,9 +467,11 @@ WHERE processing_status = 'ERROR'
 ## 14. Versionamento e Mudanças
 
 ### 14.1 Controle de Versão
-- **Script Python**: `/etl/performance/etl_002_assignments.py`
-- **Config**: `/config/etl_002_config.json`
-- **SQL Objects**: Versionados com migrations
+- **Repositório**: GitHub ProjetoAlicerce
+- **Script**: datawarehouse-docs/operacional/scripts/etl_metas_google/etl_002_assignments.py
+- **Config**: datawarehouse-docs/operacional/scripts/etl_metas_google/config/etl_002_config.json
+- **Branch strategy**: main (produção), develop (desenvolvimento)
+- **Versionamento**: Semantic versioning no header do arquivo
 
 ### 14.2 Processo de Mudança
 1. Mudanças de peso requerem aprovação em planilha
@@ -508,263 +481,129 @@ WHERE processing_status = 'ERROR'
 
 ## 15. Anexos
 
-### 15.1 Script Python Principal
-```python
-# /etl/performance/etl_002_assignments.py
-import pandas as pd
-import numpy as np
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from sqlalchemy import create_engine
-import logging
-from datetime import datetime
-import hashlib
-import json
-
-class PerformanceAssignmentsETL:
-    """ETL para processar atribuições de indicadores de performance"""
-    
-    def __init__(self, config_path):
-        self.config = self.load_config(config_path)
-        self.setup_logging()
-        self.setup_connections()
-        self.validation_errors = []
-    
-    def load_config(self, path):
-        with open(path, 'r') as f:
-            return json.load(f)
-    
-    def extract(self):
-        """Extrai dados do Google Sheets"""
-        logger.info("Iniciando extração do Google Sheets")
-        
-        service = build('sheets', 'v4', credentials=self.creds)
-        result = service.spreadsheets().values().get(
-            spreadsheetId=self.config['spreadsheet_id'],
-            range=self.config['range_name']
-        ).execute()
-        
-        values = result.get('values', [])
-        if len(values) < 10:
-            raise ValueError(f"Poucos dados na planilha: {len(values)} linhas")
-        
-        # Converter para DataFrame
-        df = pd.DataFrame(values[1:], columns=values[0])
-        logger.info(f"Extraídos {len(df)} registros")
-        
-        return df
-    
-    def transform(self, df):
-        """Aplica transformações e validações"""
-        logger.info("Iniciando transformações")
-        
-        # T1: Padronização
-        df = self.standardize_assignments(df)
-        
-        # T2: Validação de pesos
-        weight_errors = self.validate_weights(df)
-        if weight_errors:
-            self.validation_errors.extend(weight_errors)
-            logger.warning(f"{len(weight_errors)} erros de validação de peso")
-        
-        # T3: Validação de relacionamentos
-        if hasattr(self, 'indicators_df'):
-            rel_errors = self.validate_relationships(df, self.indicators_df)
-            if rel_errors:
-                self.validation_errors.extend(rel_errors)
-        
-        # T4: Metadados
-        df = self.add_metadata(df)
-        
-        return df
-    
-    def load(self, df):
-        """Carrega dados no Bronze"""
-        logger.info("Iniciando carga no Bronze")
-        
-        # Adicionar colunas de controle
-        df['load_timestamp'] = datetime.now()
-        df['load_source'] = 'GoogleSheets:m7_performance_assignments'
-        
-        # Adicionar erros de validação
-        if self.validation_errors:
-            error_dict = {f"{e['crm_id']}_{e.get('valid_from', '')}": e 
-                         for e in self.validation_errors}
-            df['validation_errors'] = df.apply(
-                lambda x: json.dumps(
-                    error_dict.get(f"{x['crm_id']}_{x['valid_from']}", {})
-                ), axis=1
-            )
-        
-        # Carregar no banco
-        df.to_sql(
-            'performance_assignments',
-            self.engine,
-            schema='bronze',
-            if_exists='append',
-            index=False
-        )
-        
-        logger.info(f"Carregados {len(df)} registros no Bronze")
-        
-        # Executar validações pós-carga
-        self.post_load_validations()
-        
-        return len(df)
-    
-    def run(self):
-        """Executa o pipeline completo"""
-        start_time = datetime.now()
-        
-        try:
-            # Extract
-            df = self.extract()
-            
-            # Carregar indicadores para validação
-            self.load_indicators()
-            
-            # Transform
-            df = self.transform(df)
-            
-            # Load
-            records_loaded = self.load(df)
-            
-            # Log sucesso
-            self.log_execution(
-                status='SUCCESS',
-                records=records_loaded,
-                duration=(datetime.now() - start_time).seconds
-            )
-            
-            # Notificar se houver erros de validação
-            if self.validation_errors:
-                self.send_validation_alerts()
-            
-        except Exception as e:
-            logger.error(f"Erro no ETL: {str(e)}")
-            self.log_execution(
-                status='ERROR',
-                error_message=str(e),
-                duration=(datetime.now() - start_time).seconds
-            )
-            raise
-
-if __name__ == "__main__":
-    etl = PerformanceAssignmentsETL('config/etl_002_config.json')
-    etl.run()
-```
-
-### 15.2 Configuração JSON
+### 15.1 Configuração do ETL
 ```json
+// config/etl_002_config.json
 {
-    "spreadsheet_id": "1nm-z2Fbp7pasHx5gmVbm7JPNBRWp4iRElYCbVfEFpOE",
+    "etl_name": "ETL-IND-002-performance-assignments",
+    "spreadsheet_id": "1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww",
     "range_name": "Página1!A:J",
-    "credentials_path": "credentials/google_sheets_api.json",
+    "google_credentials_path": "credentials/google_sheets_api.json",
     "database": {
-        "server": "m7-dw-server",
-        "database": "M7Medallion",
+        "server": "${DB_SERVER}",
+        "database": "${DB_DATABASE}",
+        "user": "${DB_USERNAME}",
+        "password": "${DB_PASSWORD}",
         "driver": "ODBC Driver 17 for SQL Server"
     },
     "validation": {
-        "min_records": 100,
-        "max_weight_deviation": 0.01,
-        "required_indicator_types": ["CARD", "GATILHO"]
+        "min_records": 50,
+        "max_records": 1000,
+        "required_fields": ["crm_id", "indicator_code", "indicator_type"],
+        "valid_indicator_types": ["CARD", "GATILHO", "KPI", "PPI", "METRICA"],
+        "max_weight_deviation": 0.01
     },
-    "notifications": {
-        "email_on_error": ["gestao.performance@m7investimentos.com.br"],
-        "slack_webhook": "https://hooks.slack.com/..."
+    "processing": {
+        "batch_size": 50,
+        "validate_relationships": true,
+        "validate_weights": true
     }
 }
 ```
 
-### 15.3 Procedure de Processamento
-```sql
-CREATE PROCEDURE bronze.prc_process_assignments_to_metadata
-AS
-BEGIN
-    SET NOCOUNT ON;
+### 15.2 Exemplos de Dados
+```json
+// Exemplo de registro extraído do Google Sheets
+{
+  "crm_id": "AAI001",
+  "nome_assessor": "João Silva",
+  "indicator_code": "CAPTACAO_LIQUIDA",
+  "indicator_type": "CARD",
+  "weight": "35",
+  "valid_from": "2025-01-01",
+  "valid_to": "",
+  "created_by": "gestor.performance@m7.com.br",
+  "approved_by": "diretor.comercial@m7.com.br",
+  "comments": "Peso aumentado devido a foco em captação"
+}
+
+// Exemplo após transformação para Bronze
+{
+  "load_id": 123,
+  "load_timestamp": "2025-01-17 15:10:55",
+  "load_source": "GoogleSheets:1k9gM3poSzuwEZbwaRv-AwVqQj4WjFnJE6mT5RWTvUww",
+  "crm_id": "AAI001",
+  "nome_assessor": "João Silva",
+  "indicator_code": "CAPTACAO_LIQUIDA",
+  "indicator_type": "CARD",
+  "weight": "35",
+  "valid_from": "2025-01-01",
+  "valid_to": "",
+  "created_by": "gestor.performance@m7.com.br",
+  "approved_by": "diretor.comercial@m7.com.br",
+  "comments": "Peso aumentado devido a foco em captação",
+  "row_number": 15,
+  "row_hash": "e5f6g7h8i9...",
+  "is_current": 1,
+  "is_processed": 0,
+  "weight_sum_valid": 1,
+  "indicator_exists": 1,
+  "validation_errors": null
+}
+
+// Exemplo de erro de validação
+{
+  "error_type": "INVALID_WEIGHT_SUM",
+  "crm_id": "AAI002",
+  "valid_from": "2025-01-01",
+  "total_weight": 95.0,
+  "expected": 100.0,
+  "deviation": 5.0
+}
+```
+
+### 15.3 Fluxo de Carga Detalhado
+```python
+# Processo de carga em lotes para evitar timeouts
+def load(self, dry_run: bool = False) -> int:
+    # TRUNCATE para garantir dados limpos
+    conn.execute(text("TRUNCATE TABLE bronze.performance_assignments"))
     
-    BEGIN TRANSACTION;
+    # Preparar dados
+    load_data = self.processed_data.copy()
+    load_data['load_timestamp'] = datetime.now()
+    load_data['load_source'] = f'GoogleSheets:{SPREADSHEET_ID}'
     
-    BEGIN TRY
-        -- 1. Validar dados no bronze
-        EXEC bronze.prc_validate_assignments_batch @load_id = NULL;
-        
-        -- 2. Transformar tipos de dados
-        WITH transformed AS (
-            SELECT 
-                crm_id,
-                nome_assessor,
-                indicator_code,
-                indicator_type,
-                CAST(weight AS DECIMAL(5,2)) as indicator_weight,
-                CAST(valid_from AS DATE) as valid_from,
-                CAST(valid_to AS DATE) as valid_to,
-                created_by,
-                approved_by,
-                comments,
-                load_id,
-                load_timestamp
-            FROM bronze.performance_assignments
-            WHERE is_processed = 0
-              AND processing_status IS NULL
+    # Converter para string (Bronze preserva formato original)
+    string_columns = ['crm_id', 'nome_assessor', 'indicator_code', 
+                     'indicator_type', 'weight', 'valid_from', 'valid_to']
+    for col in string_columns:
+        if col in load_data.columns:
+            load_data[col] = load_data[col].astype(str).replace('nan', '')
+    
+    # Inserir em lotes de 50 registros
+    batch_size = 50
+    for i in range(0, len(load_data), batch_size):
+        batch = load_data.iloc[i:i+batch_size]
+        batch.to_sql(
+            'performance_assignments',
+            conn,
+            schema='bronze',
+            if_exists='append',
+            index=False
         )
-        -- 3. Merge com silver
-        MERGE silver.performance_assignments AS target
-        USING transformed AS source
-            ON target.crm_id = source.crm_id
-           AND target.indicator_code = source.indicator_code
-           AND target.valid_from = source.valid_from
-        WHEN MATCHED AND target.valid_to IS NULL THEN
-            UPDATE SET 
-                indicator_weight = source.indicator_weight,
-                modified_date = GETDATE(),
-                modified_by = source.created_by
-        WHEN NOT MATCHED THEN
-            INSERT (crm_id, indicator_id, indicator_weight, 
-                   valid_from, valid_to, created_by, created_date)
-            VALUES (source.crm_id, 
-                   (SELECT indicator_id FROM silver.performance_indicators 
-                    WHERE indicator_code = source.indicator_code),
-                   source.indicator_weight,
-                   source.valid_from,
-                   source.valid_to,
-                   source.created_by,
-                   GETDATE());
-        
-        -- 4. Marcar como processado
-        UPDATE bronze.performance_assignments
-        SET is_processed = 1,
-            processing_date = GETDATE(),
-            processing_status = 'SUCCESS'
-        WHERE is_processed = 0;
-        
-        COMMIT TRANSACTION;
-        
-    END TRY
-    BEGIN CATCH
-        ROLLBACK TRANSACTION;
-        
-        -- Marcar com erro
-        UPDATE bronze.performance_assignments
-        SET processing_status = 'ERROR',
-            processing_notes = ERROR_MESSAGE()
-        WHERE is_processed = 0;
-        
-        THROW;
-    END CATCH
-END;
 ```
 
 ### 15.4 Referências
-- [Google Sheets API Documentation](https://developers.google.com/sheets/api)
-- [ARQ-001 - Arquitetura Performance Tracking]
-- [ETL-001 - Performance Indicators]
-- [MOD-001 - Modelo Performance Tracking]
-- [Processo de Gestão de Metas - RH]
+- [Google Sheets API v4 Documentation](https://developers.google.com/sheets/api/quickstart/python)
+- [MOD-ASS-001 - Modelo de Dados Performance Assignments Silver]
+- [QRY-ASS-001 - DDL Bronze Performance Assignments]
+- [QRY-ASS-003 - Procedure Bronze to Silver Assignments]
+- [ETL-IND-001 - Extração de Indicadores de Performance]
+- [CLAUDE.md - Diretrizes do Projeto]
 
 ---
 
-**Documento criado por**: Arquitetura de Dados M7 Investimentos  
-**Data**: 2025-01-16  
-**Revisão**: Trimestral ou sob mudança de estrutura
+**Documento criado por**: Bruno Chiaramonti  
+**Data**: 2025-01-18  
+**Revisão**: 2.0.0 - Atualização completa seguindo template ETL
