@@ -2,14 +2,14 @@
 
 ---
 **título**: Arquitetura do Sistema de Performance Tracking
-**versão**: 1.0.0
+**versão**: 1.1.0
 **última_atualização**: 2025-01-18
 **tags**: [arquitetura, performance, kpi, indicadores, medallion, BI]
 **responsável**: bruno.chiaramonti@multisete.com
 **status**: aprovado
 **tipo_documento**: ARQ
 **nível_hierárquico**: estratégico
-**repositório**: [business-documentation/datawarehouse-docs/ai-agents-contexts]
+**repositório**: [datawarehouse-docs]
 
 **dependências**:
   - tipo: política
@@ -20,30 +20,30 @@
     repo: business-documentation/estrategico/manuais/ANA
   - tipo: arquitetura
     ref: ARQ-DWH-001
-    repo: datawarehouse-docs
+    repo: datawarehouse-docs/estrategico/arquiteturas
 
 **aprovações**:
-  - nome: Diretoria Comercial
-    cargo: Diretor Comercial
+  - nome: bruno.chiaramonti@multisete.com
+    cargo: Diretor de Performance e Desempenho
     data: 2025-01-18
 ---
 
 ## 1. Visão Geral
 
 ### 1.1 Objetivo
-O Sistema de Performance Tracking é uma solução de gestão de indicadores (KPIs) individualizados que permite atribuir diferentes métricas para cada assessor de investimentos, com mudanças trimestrais e cálculo de performance ponderada. O sistema resolve o problema de cada pessoa ter indicadores diferentes e pesos variáveis, mantendo flexibilidade total através de configuração via metadados.
+O Sistema de Performance Tracking é uma solução de gestão de indicadores (KPIs) individualizados que permite atribuir diferentes métricas para cada pessoa da equipe de investimentos, com mudanças trimestrais e cálculo de performance ponderada. O sistema resolve o problema de cada pessoa ter indicadores diferentes e pesos variáveis, mantendo flexibilidade total através de configuração via metadados (Google Sheets e processos de carga automatizados).
 
 ### 1.2 Escopo
 **Incluído:**
-- Gestão de indicadores de performance personalizados por assessor
+- Gestão de indicadores de performance personalizados por pessoa
 - Atribuição dinâmica de pesos por indicador
-- Definição e acompanhamento de metas mensais
+- Definição e acompanhamento de metas mensais/trimestrais
 - Cálculo de performance individual e rankings
 - Suporte a indicadores normais e invertidos
 - Integração com PowerBI, LLMs e Machine Learning
 
 **Excluído:**
-- Cálculo de remuneração variável (consome dados do sistema)
+- Cálculo de bonificações (consome dados do sistema)
 - Gestão de recursos humanos
 - Sistemas de vendas/CRM (fontes de dados)
 
@@ -52,25 +52,25 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 | Stakeholder | Papel | Interesse |
 |-------------|-------|-----------|
 | Diretoria Comercial | Sponsor/Aprovador | Visão estratégica de performance |
-| Gestão de Performance | Owner do Sistema | Configuração e manutenção de indicadores |
-| Assessores de Investimento | Usuários Finais | Acompanhamento de metas individuais |
-| Controladoria | Consumidor | Dados para remuneração variável |
-| TI/Analytics | Mantenedor | Operação e evolução do sistema |
+| Gestão de Performance | Owner do Sistema | Configuração e manutenção de indicadores (indicadores e metas) |
+| Pessoas da equipe de Investimentos | Usuários Finais | Acompanhamento de metas individuais |
+| Controladoria | Consumidor | Dados para bonificação |
+| Analytics | Mantenedor | Operação e evolução do sistema |
 
 ## 2. Contexto de Negócio
 
 ### 2.1 Drivers de Negócio
 - **Driver 1**: Necessidade de flexibilidade na atribuição de indicadores individualizados
-- **Driver 2**: Mudanças trimestrais de pesos e indicadores por assessor
-- **Driver 3**: Transparência no cálculo de performance e remuneração
-- **Driver 4**: Agilidade na inclusão de novos indicadores sem alteração de código
+- **Driver 2**: Mudanças trimestrais de pesos e indicadores por pessoa
+- **Driver 3**: Transparência no cálculo de performance e bonificação
+- **Driver 4**: Agilidade na inclusão de novos indicadores e pessoas sem alteração de código
 
 ### 2.2 Capacidades de Negócio
 
 | Capacidade | Descrição | Prioridade |
 |------------|-----------|------------|
 | Gestão de Indicadores | Cadastrar e configurar KPIs dinamicamente | Alta |
-| Atribuição Personalizada | Definir indicadores e pesos por assessor | Alta |
+| Atribuição Personalizada | Definir indicadores e pesos por pessoa | Alta |
 | Acompanhamento de Metas | Definir e monitorar metas mensais | Alta |
 | Cálculo de Performance | Processar resultados e calcular atingimento | Alta |
 | Rankings e Comparações | Gerar rankings e análises comparativas | Média |
@@ -103,16 +103,16 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 ### 4.1 Diagrama de Contexto (C4 - Nível 1)
 
 ```
-┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
-│  Gestão Performance │────▶│ Performance Tracking │────▶│      Power BI      │
-│  (Google Sheets)    │     │      System         │     │   (Dashboards)      │
-└─────────────────────┘     └──────────┬──────────┘     └─────────────────────┘
-                                       │                           │
-                            ┌──────────┴──────────┐                │
-                            │                     │                │
-                    ┌───────▼────────┐   ┌───────▼────────┐        │
-                    │ Controladoria  │   │  ML Platform   │        │
-                    │ (Remuneração)  │   │  (Previsões)   │◀───────┘
+┌─────────────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
+│  Gestão Performance │────▶│ Performance Tracking │────▶│      Power BI       │
+│  (Google Sheets)    │     │      System          │     │   (Dashboards)      │
+└─────────────────────┘     └──────────┬───────────┘     └─────────────────────┘
+                                       │                            │
+                            ┌──────────┴──────────┐                 │
+                            │                     │                 │
+                    ┌───────▼────────┐   ┌────────▼───────┐         │
+                    │ Controladoria  │   │  ML Platform   │         │
+                    │ (Remuneração)  │   │  (Previsões)   │◀────────┘
                     └────────────────┘   └────────────────┘
 ```
 
@@ -135,12 +135,12 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 │                      Performance Tracking System                  │
 ├───────────────────────────────────────────────────────────────────┤
 │                                                                   │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐    │
-│  │ ETL-IND-001     │  │ ETL-IND-002     │  │ ETL-IND-003     │    │
-│  │ (Indicators)    │  │ (Assignments)   │  │ (Targets)       │    │
-│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘    │
-│           │                    │                    │             │
-│           ▼                    ▼                    ▼             │
+│  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐  │
+│  │ ETL-IND-001     │   │ ETL-IND-002     │   │ ETL-IND-003     │  │
+│  │ (Indicators)    │   │ (Assignments)   │   │ (Targets)       │  │
+│  └────────┬────────┘   └────────┬────────┘   └────────┬────────┘  │
+│           │                    │                      │           │
+│           ▼                    ▼                      ▼           │
 │  ┌─────────────────────────────────────────────────────────────┐  │
 │  │                      BRONZE LAYER                           │  │
 │  │  performance_indicators | performance_assignments | targets │  │
@@ -197,7 +197,7 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 │                     GOLD LAYER - Processing Flow                    │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  1. Para cada Assessor + Período:                                   │
+│  1. Para cada Pessoa + Período:                                     │
 │     └─> Buscar indicadores ativos (assignments)                     │
 │                                                                     │
 │  2. Para cada Indicador:                                            │
@@ -250,7 +250,7 @@ gold.card_metas (Entity-Attribute-Value)
    └─> Transforma EAV em colunar (1 coluna por indicador)
    
 2. vw_card_metas_weighted_score
-   └─> Score consolidado por assessor (soma ponderada CARD)
+   └─> Score consolidado por pessoa (soma ponderada CARD)
    
 3. vw_card_metas_ranking
    └─> Rankings por indicador e geral
@@ -264,7 +264,7 @@ gold.card_metas (Entity-Attribute-Value)
 
 ### 5.3 Exemplo de Processamento Gold
 
-#### Assessor: Clever Mota (20471)
+#### Pessoa: Hugo Silva (12345)
 #### Período: Janeiro 2025
 
 **Indicadores Atribuídos:**
@@ -308,18 +308,103 @@ gold.card_metas (Entity-Attribute-Value)
 | Silver + Facts | Execução Fórmulas SQL | Procedures dinâmicas | gold.card_metas | Mensal (dia 5) |
 | Gold EAV | Agregações e Rankings | Views materializadas | Consumo BI/ML | Real-time |
 
+### 5.5 Arquitetura da Procedure de Processamento Gold
+
+#### 5.5.1 Visão Geral Arquitetural
+A procedure `prc_process_performance_to_gold` implementa um motor de execução dinâmica de fórmulas SQL, seguindo princípios de arquitetura orientada a metadados. Esta abordagem permite flexibilidade total na definição de indicadores sem alteração de código.
+
+#### 5.5.2 Padrões Arquiteturais Implementados
+
+**Pattern 1: Strategy Pattern via Metadados**
+- Cada indicador encapsula sua própria estratégia de cálculo (formula SQL)
+- Algoritmos intercambiáveis em runtime via configuração
+- Separação entre definição (metadata) e execução (engine)
+
+**Pattern 2: Template Method**
+- Fluxo padronizado: Recuperar → Executar → Calcular → Gravar
+- Steps customizáveis via fórmulas SQL e métodos de agregação
+- Framework extensível para novos tipos de indicadores
+
+**Pattern 3: Entity-Attribute-Value (EAV)**
+- Modelo genérico suportando N indicadores × N pessoas
+- Schema evolution sem alteração estrutural
+- Trade-off: flexibilidade vs performance (mitigado por views)
+
+#### 5.5.3 Componentes Arquiteturais
+
+```
+┌─────────────────────────────────────────────────────┐
+│           Performance Engine Architecture           │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│    ┌─────────────────┐      ┌──────────────────┐    │
+│    │ Metadata Store  │      │ Execution Engine │    │
+│    │ • Indicators    │─────▶│ • SQL Parser     │    │
+│    │ • Formulas      │      │ • Query Builder  │    │
+│    │ • Weights       │      │ • Result Handler │    │
+│    └─────────────────┘      └─────────┬────────┘    │
+│                                     │               │
+│    ┌─────────────────┐      ┌─────────▼────────┐    │
+│    │ Data Sources    │      │ Processing Core  │    │
+│    │ • Fact Tables   │─────▶│ • Loop Control   │    │
+│    │ • Dimensions    │      │ • Error Handler  │    │
+│    │ • Aggregates    │      │ • Achievement    │    │
+│    └─────────────────┘      └─────────┬────────┘    │
+│                                     │               │
+│                            ┌──────────▼────────┐    │
+│                            │   Output Layer    │    │
+│                            │ • EAV Storage     │    │
+│                            │ • Audit Trail     │    │
+│                            │ • Performance Log │    │
+│                            └───────────────────┘    │
+└─────────────────────────────────────────────────────┘
+```
+
+#### 5.5.4 Características de Design
+
+**Isolamento e Segurança:**
+- Execução em contexto isolado com permissões restritas
+- Whitelist de objetos permitidos nas fórmulas
+- Prevenção de SQL injection via parametrização
+
+**Resiliência e Recovery:**
+- Transações com savepoints por pessoa
+- Retry automático com backoff exponencial
+- Degradação graceful (falha parcial não impacta todo processamento)
+
+**Observabilidade:**
+- Logging estruturado em múltiplos níveis
+- Métricas de performance por indicador
+- Trace completo de execução para auditoria
+
+**Extensibilidade:**
+- Novos tipos de agregação via metadata
+- Hooks para pré/pós processamento
+- Interface para engines de cálculo externos
+
+#### 5.5.5 Integração com Ecossistema
+
+```
+┌────────────────┐     ┌──────────────────┐     ┌────────────────┐
+│ Schedule/Event │────▶│ Performance Proc │────▶│ Downstream     │
+│ • SQL Agent    │     │ • Execute        │     │ • Power BI     │
+│ • API Call     │     │ • Transform      │     │ • ML Pipeline  │
+│ • Manual       │     │ • Store          │     │ • APIs         │
+└────────────────┘     └──────────────────┘     └────────────────┘
+```
+
 ### 5.6 Diagrama de Processamento Gold End-to-End
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                      EXEMPLO: Assessor Clever Mota - Jan/2025           │
+│                      EXEMPLO: Pessoa Hugo Silva - Jan/2025              │
 └─────────────────────────────────────────────────────────────────────────┘
 
 SILVER TABLES                           GOLD PROCESSING
 ┌──────────────────┐
 │ Indicators       │     ┌─────────────────────────────────────────────┐
-│ ┌──────────────┐ │     │ 1. LOOP: Para cada assessor + período       │
-│ │ CAPT_LIQ     │ │────▶│    Clever Mota (20471) + Jan/2025           │
+│ ┌──────────────┐ │     │ 1. LOOP: Para cada pessoa + período         │
+│ │ CAPT_LIQ     │ │────▶│    Hugo Silva (12345) + Jan/2025           │
 │ │ Formula: ... │ │     └─────────────────────────┬───────────────────┘
 │ │ Method: SUM  │ │                               │
 │ └──────────────┘ │     ┌─────────────────────────▼───────────────────┐
@@ -328,7 +413,7 @@ SILVER TABLES                           GOLD PROCESSING
 ┌──────────────────┐     │    - CLIENT_300K_CDI (CARD, 10%)            │
 │ Assignments      │────▶│    - ABERT_300K (CARD, 20%)                 │
 │ ┌──────────────┐ │     │    - IEA (CARD, 30%)                        │
-│ │ 20471        │ │     │    - NPS_NOTA (GATILHO, 0%)                 │
+│ │ 12345        │ │     │    - NPS_NOTA (GATILHO, 0%)                 │
 │ │ Weights...   │ │     └─────────────────────────┬───────────────────┘
 │ └──────────────┘ │                               │
 └──────────────────┘     ┌─────────────────────────▼───────────────────┐
@@ -336,8 +421,8 @@ SILVER TABLES                           GOLD PROCESSING
 ┌──────────────────┐     │                                             │
 │ Targets          │     │ CAPT_LIQ:                                   │  
 │ ┌──────────────┐ │────▶│   SQL: SELECT captacao_liquida_total        │
-│ │ 20471        │ │     │        FROM gold.captacao_liquida_assessor  │
-│ │ Jan: 500K    │ │     │        WHERE crm_id = '20471'               │
+│ │ 12345        │ │     │        FROM gold.captacao_liquida_assessor  │
+│ │ Jan: 500K    │ │     │        WHERE crm_id = '12345'               │
 │ └──────────────┘ │     │        AND data BETWEEN '2025-01-01'        │
 └──────────────────┘     │                     AND '2025-01-31'        │
                          │   Result: 450.000                           │
@@ -351,7 +436,7 @@ FACT TABLES              ┌─────────────────�
 │ Captação         │     │                                             │
 │ Clientes         │────▶│ gold.card_metas:                            │
 │ NPS              │     │ ┌─────────────────────────────────────┐     │
-│ Etc...           │     │ │ entity_id: 20471                    │     │
+│ Etc...           │     │ │ entity_id: 12345                    │     │
 └──────────────────┘     │ │ attribute_code: CAPT_LIQ            │     │
                          │ │ period: 2025-01                     │     │
                          │ │ target_value: 500000                │     │
@@ -369,7 +454,7 @@ FACT TABLES              ┌─────────────────�
                          │ ┌──────┬─────────┬────────────┬────┐        │
                          │ │CRM_ID│CAPT_LIQ │CLIENT_300K │... │        │
                          │ ├──────┼─────────┼────────────┼────┤        │
-                         │ │20471 │   90%   │    90%     │... │        │
+                         │ │12345 │   90%   │    90%     │... │        │
                          │ └──────┴─────────┴────────────┴────┘        │
                          │                                             │
                          │ Score Final: 100.5%                         │
@@ -380,7 +465,7 @@ FACT TABLES              ┌─────────────────�
 
 - **Classificação**: Confidencial (dados de performance e metas)
 - **Retenção**: 5 anos histórico completo, agregados indefinidamente
-- **Privacidade**: Dados pessoais de assessores (LGPD aplicável)
+- **Privacidade**: Dados pessoais de pessoas da equipe de investimentos (LGPD aplicável)
 - **Auditoria**: Todas as execuções de fórmulas são logadas com timestamp
 
 ## 6. Arquitetura de Integração
@@ -399,7 +484,7 @@ FACT TABLES              ┌─────────────────�
 
 #### 6.2.1 Processo de Execução Dinâmica
 ```
-Para cada combinação Assessor + Indicador + Período:
+Para cada combinação Pessoa + Indicador + Período:
 
 1. RECUPERAR METADADOS
    ├─> indicator.formula (ex: "captacao_liquida_total")
@@ -444,14 +529,14 @@ Para cada combinação Assessor + Indicador + Período:
 **Tipo 3: Cálculo Complexo**
 - Indicador: NPS_NOTA
 - Formula: `(SUM(_PROMOTOR_) - SUM(_DETRATOR_)) / (SUM(_PROMOTOR_) + SUM(_NEUTROS_) + SUM(_DETRATOR_))`
-- Agregação: CUSTOM
+- Agregação: CUSTOM (formula completa)
 - Origem: Tabela de pesquisas NPS
 
-**Tipo 4: Razão/Percentual**
-- Indicador: NPS_TX_RESP
-- Formula: `COUNT(_RESPOSTAS_) / COUNT(_ENVIOS_)`
-- Agregação: CUSTOM
-- Origem: Tabela de campanhas
+**Tipo 4: Indicador Invertido**
+- Indicador: TAXA_CHURN
+- Formula: `COUNT(clientes_perdidos) / COUNT(clientes_total)`
+- Is_Inverted: TRUE
+- Cálculo Achievement: (2 - (realized/target)) × 100
 
 ### 6.3 Matriz de Integração
 
@@ -472,7 +557,7 @@ Para cada combinação Assessor + Indicador + Período:
 |---------|-----------|---------|
 | ETL Completo | < 30 minutos | End-to-end |
 | Query Dashboard | < 2 segundos | P95 |
-| Cálculo Mensal | < 15 minutos | Todos assessores |
+| Cálculo Mensal | < 15 minutos | Todas pessoas |
 
 ### 7.2 Disponibilidade e Resiliência
 
@@ -494,7 +579,7 @@ Para cada combinação Assessor + Indicador + Período:
 
 - **Horizontal**: Não aplicável (volume controlado)
 - **Vertical**: SQL Server auto-scale
-- **Limites**: ~500 assessores × 20 indicadores × 12 meses = 120K registros/ano
+- **Limites**: ~500 pessoas × 20 indicadores × 12 meses = 120K registros/ano
 
 ## 8. Arquitetura de Deployment
 
@@ -598,7 +683,7 @@ Para cada combinação Assessor + Indicador + Período:
 ### 11.2 Dashboards e Alertas
 
 - **Dashboard Operacional**: Status ETL, erros, volume
-- **Dashboard de Negócio**: Performance assessores, rankings
+- **Dashboard de Negócio**: Performance pessoas, rankings
 - **Alertas**: Email se ETL falhar, validações críticas
 
 ## 12. Custos e TCO
@@ -657,6 +742,9 @@ Para cada combinação Assessor + Indicador + Período:
 | Versão | Data | Autor | Descrição da Alteração |
 |--------|------|-------|------------------------|
 | 1.0.0 | 2025-01-18 | Bruno Chiaramonti | Criação do documento |
+| 1.1.0 | 2025-01-18 | Bruno Chiaramonti | Adição da seção 5.5 detalhando a procedure Gold |
+| 1.2.0 | 2025-01-18 | Claude Assistant | Ajustes solicitados: repositório, terminologia e simplificação da seção 5.5 |
+| 1.2.1 | 2025-01-18 | Claude Assistant | Substituição do exemplo real por pessoa hipotética |
 
 ---
 
@@ -678,7 +766,7 @@ Para cada combinação Assessor + Indicador + Período:
 Indicador: CAPT_LIQ
 Formula: captacao_liquida_total
 Tabela: gold.captacao_liquida_assessor
-Execução: SELECT captacao_liquida_total WHERE crm_id = @assessor
+Execução: SELECT captacao_liquida_total WHERE crm_id = @pessoa
 ```
 
 **Padrão 2: Agregação com Filtro**
