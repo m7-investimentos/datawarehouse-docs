@@ -1,208 +1,193 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+ETL-IND-001: ETL de Indicadores de Performance (Google Sheets → Bronze) - V2.0.0
 ================================================================================
-ETL-IND-001 - Extração de Indicadores de Performance do Google Sheets
-================================================================================
-Tipo: Script ETL
-Versão: 1.0.0
-Última atualização: 2025-01-17
+Versão: 2.0.0
+Última atualização: 2025-01-20
 Autor: bruno.chiaramonti@multisete.com
-Revisor: arquitetura.dados@m7investimentos.com.br
-Tags: [etl, performance, indicadores, google-sheets, bronze]
-Status: produção
-Python: 3.8+
-================================================================================
 
-OBJETIVO:
-    Extrair dados de configuração de indicadores de performance da planilha 
-    Google Sheets m7_performance_indicators para a camada Bronze do Data Warehouse,
-    permitindo posterior validação e carga na camada de metadados.
+Descrição: 
+-----------
+ETL responsável por extrair indicadores de performance do Google Sheets
+e carregar na camada Bronze do Data Warehouse.
 
-CASOS DE USO:
-    1. Carga inicial de indicadores de performance
-    2. Atualização de indicadores existentes
-    3. Sincronização sob demanda de mudanças na planilha
+NOVA FUNCIONALIDADE V2.0.0:
+- Detecta mudanças nos dados e força reprocessamento quando necessário
+- Compara com dados existentes no Silver antes de carregar
 
-FREQUÊNCIA DE EXECUÇÃO:
-    Sob demanda (mudanças são raras)
-
-EXEMPLOS DE USO:
-    # Execução básica
-    python etl_001_indicators.py
-    
-    # Com configuração customizada
-    python etl_001_indicators.py --config config/etl_001_production.json
-    
-    # Modo debug com dry-run
-    python etl_001_indicators.py --debug --dry-run
+Fonte: Google Sheets (m7_performance_indicators)
+Destino: bronze.performance_indicators
 """
 
-# ==============================================================================
-# 1. IMPORTS
-# ==============================================================================
-# Bibliotecas padrão
 import os
 import sys
 import json
 import logging
-import argparse
-import hashlib
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+import pyodbc
+from sqlalchemy import create_engine, text
+from urllib.parse import quote_plus
+import warnings
+warnings.filterwarnings('ignore')
 
-# Bibliotecas de terceiros
-try:
-    import pandas as pd
-    import numpy as np
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-    import pyodbc
-    from sqlalchemy import create_engine, text
-    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-    from dotenv import load_dotenv
-except ImportError as e:
-    print(f"Erro ao importar biblioteca: {e}")
-    print("Execute: pip install -r requirements.txt")
-    sys.exit(1)
+# Google Sheets API
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # ==============================================================================
-# 2. CONFIGURAÇÕES E CONSTANTES
+# CONFIGURAÇÕES
 # ==============================================================================
 
-# Diretórios
-BASE_DIR = Path(__file__).resolve().parent
-CONFIG_DIR = BASE_DIR / 'config'
-DATA_DIR = BASE_DIR / 'data'
-LOG_DIR = BASE_DIR / 'logs'
-CREDENTIALS_DIR = BASE_DIR / 'credentials'
+# IDs e Ranges do Google Sheets
+SPREADSHEET_ID = '18AJfFeOOKNvCEdz9qS6xAJNUKoAzJAE1QCa7KK88vQE'
+RANGE_NAME = 'Indicators!A:Z'
 
-# Carregar variáveis de ambiente do arquivo .env no diretório credentials
-load_dotenv(CREDENTIALS_DIR / '.env')
+# Caminhos
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_DIR = os.path.join(BASE_DIR, 'config')
+CREDENTIALS_DIR = os.path.join(BASE_DIR, 'credentials')
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
 
-# Configuração de logging
-LOG_FORMAT = '[%(asctime)s] [%(levelname)s] [ETL-IND-001] %(message)s'
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+# Arquivos
+CONFIG_FILE = os.path.join(CONFIG_DIR, 'etl_001_config.json')
+CREDENTIALS_FILE = os.path.join(CREDENTIALS_DIR, 'google_sheets_api.json')
 
 # Criar diretórios se não existirem
-for directory in [CONFIG_DIR, DATA_DIR, LOG_DIR, CREDENTIALS_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
 
-# Configuração do Google Sheets
-SPREADSHEET_ID = '1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY'
-RANGE_NAME = 'Página1!A:K'
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+# Configuração de Logging
+log_filename = os.path.join(LOG_DIR, f"ETL-IND-001_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler()
+    ]
+)
 
-# Categorias e unidades válidas
+# Valores válidos para validação
 VALID_CATEGORIES = ['FINANCEIRO', 'QUALIDADE', 'VOLUME', 'COMPORTAMENTAL', 'PROCESSO', 'GATILHO']
 VALID_UNITS = ['R$', '%', 'QTD', 'SCORE', 'HORAS', 'DIAS', 'RATIO']
 VALID_AGGREGATIONS = ['SUM', 'AVG', 'COUNT', 'MAX', 'MIN', 'LAST', 'CUSTOM']
 
 # ==============================================================================
-# 3. CONFIGURAÇÃO DE LOGGING
+# CLASSE ETL
 # ==============================================================================
 
-def setup_logging(log_file: Optional[str] = None) -> logging.Logger:
-    """
-    Configura o sistema de logging.
+class IndicatorsETL:
+    """ETL para carregar indicadores de performance do Google Sheets para Bronze."""
     
-    Args:
-        log_file: Nome do arquivo de log (opcional)
-        
-    Returns:
-        Logger configurado
-    """
-    logger = logging.getLogger('ETL-IND-001')
-    logger.setLevel(LOG_LEVEL)
-    
-    # Handler para console
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-    logger.addHandler(console_handler)
-    
-    # Handler para arquivo
-    if log_file:
-        file_handler = logging.FileHandler(LOG_DIR / log_file)
-        file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-        logger.addHandler(file_handler)
-    
-    return logger
-
-# ==============================================================================
-# 4. CLASSES
-# ==============================================================================
-
-class PerformanceIndicatorsETL:
-    """
-    ETL para extrair indicadores de performance do Google Sheets para Bronze.
-    
-    Attributes:
-        config: Dicionário de configuração
-        logger: Logger para registro de eventos
-        credentials: Credenciais do Google Service Account
-        db_connection: Conexão com banco de dados
-    """
-    
-    def __init__(self, config: Dict[str, Any], logger: logging.Logger):
+    def __init__(self, config_file: str = CONFIG_FILE):
         """
-        Inicializa o ETL de indicadores.
+        Inicializa o ETL.
         
         Args:
-            config: Configurações do ETL
-            logger: Logger configurado
+            config_file: Caminho para arquivo de configuração
         """
-        self.config = config
-        self.logger = logger
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.config = self._load_config(config_file)
         self.credentials = None
         self.db_engine = None
         self.data = None
         self.processed_data = None
         self.validation_errors = []
+        self.existing_silver_data = None  # V2.0.0: Para comparação
         
-    def setup_connections(self):
-        """Configura conexões com Google Sheets e banco de dados."""
-        self.logger.info("Configurando conexões...")
-        
-        # Google Sheets
+    def _load_config(self, config_file: str) -> Dict:
+        """Carrega configurações do arquivo JSON."""
+        if not os.path.exists(config_file):
+            self.logger.warning(f"Arquivo de configuração não encontrado: {config_file}")
+            return {}
+            
         try:
-            creds_path = self.config.get('google_credentials_path', 
-                                        CREDENTIALS_DIR / 'google_sheets_api.json')
-            self.credentials = service_account.Credentials.from_service_account_file(
-                creds_path, scopes=SCOPES
-            )
-            self.logger.info("Credenciais Google carregadas com sucesso")
+            with open(config_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
         except Exception as e:
-            self.logger.error(f"Erro ao carregar credenciais Google: {e}")
+            self.logger.error(f"Erro ao carregar configuração: {e}")
+            return {}
+            
+    def setup_credentials(self):
+        """Configura credenciais do Google Sheets."""
+        self.logger.info("Configurando credenciais do Google Sheets...")
+        
+        if not os.path.exists(CREDENTIALS_FILE):
+            raise FileNotFoundError(f"Arquivo de credenciais não encontrado: {CREDENTIALS_FILE}")
+            
+        try:
+            self.credentials = service_account.Credentials.from_service_account_file(
+                CREDENTIALS_FILE,
+                scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
+            )
+            self.logger.info("Credenciais configuradas com sucesso")
+        except Exception as e:
+            self.logger.error(f"Erro ao configurar credenciais: {e}")
             raise
             
-        # Banco de dados
+    def setup_database(self):
+        """Configura conexão com banco de dados."""
+        self.logger.info("Configurando conexão com banco de dados...")
+        
+        # Buscar configurações do ambiente ou config
+        db_config = {
+            'server': os.getenv('DB_SERVER', self.config.get('database', {}).get('server', '172.17.0.10')),
+            'database': os.getenv('DB_DATABASE', self.config.get('database', {}).get('database', 'M7Medallion')),
+            'username': os.getenv('DB_USERNAME', self.config.get('database', {}).get('username', 'm7invest')),
+            'password': os.getenv('DB_PASSWORD', self.config.get('database', {}).get('password', '!@Multi19732846')),
+            'driver': os.getenv('DB_DRIVER', self.config.get('database', {}).get('driver', 'ODBC Driver 17 for SQL Server'))
+        }
+        
         try:
-            db_config = self.config['database']
-            # Remover chaves extras do driver se existirem
-            driver = db_config['driver'].strip('{}')
-            
-            # Usar urllib para escapar a senha corretamente
-            from urllib.parse import quote_plus
-            
-            # Criar connection string usando ODBC direto (mais confiável)
             conn_str = (
-                f"DRIVER={{{driver}}};"
+                f"DRIVER={{{db_config['driver']}}};"
                 f"SERVER={db_config['server']};"
                 f"DATABASE={db_config['database']};"
-                f"UID={db_config['user']};"
+                f"UID={db_config['username']};"
                 f"PWD={db_config['password']};"
                 f"TrustServerCertificate=yes"
             )
             
-            # URL para SQLAlchemy usando odbc_connect
             connection_string = f"mssql+pyodbc:///?odbc_connect={quote_plus(conn_str)}"
             self.db_engine = create_engine(connection_string)
             self.logger.info("Conexão com banco de dados estabelecida")
         except Exception as e:
             self.logger.error(f"Erro ao conectar ao banco de dados: {e}")
             raise
+            
+    def load_existing_silver_data(self):
+        """
+        V2.0.0: Carrega dados existentes do Silver para comparação.
+        """
+        self.logger.info("Carregando dados existentes do Silver para comparação...")
+        
+        try:
+            query = """
+            SELECT 
+                indicator_code,
+                indicator_name,
+                category,
+                unit,
+                aggregation_method,
+                calculation_formula,
+                is_inverted,
+                is_active,
+                version
+            FROM silver.performance_indicators
+            WHERE valid_to IS NULL  -- Apenas registros atuais
+            """
+            
+            self.existing_silver_data = pd.read_sql(query, self.db_engine)
+            self.logger.info(f"Carregados {len(self.existing_silver_data)} indicadores do Silver")
+            
+        except Exception as e:
+            self.logger.warning(f"Erro ao carregar dados do Silver (pode não existir ainda): {e}")
+            self.existing_silver_data = pd.DataFrame()
             
     @retry(
         stop=stop_after_attempt(3),
@@ -253,6 +238,112 @@ class PerformanceIndicatorsETL:
                 self.logger.error(f"Erro HTTP: {e}")
             raise
             
+    def detect_changes(self) -> List[str]:
+        """
+        V2.0.0: Detecta quais indicadores tiveram mudanças.
+        
+        Returns:
+            Lista de indicator_codes que mudaram
+        """
+        if self.existing_silver_data.empty:
+            self.logger.info("Sem dados no Silver - todos os indicadores serão processados")
+            return self.data['indicator_code'].tolist()
+            
+        changed_indicators = []
+        
+        for _, row in self.data.iterrows():
+            indicator_code = row.get('indicator_code', '')
+            if not indicator_code:
+                continue
+                
+            # Buscar no Silver
+            existing = self.existing_silver_data[
+                self.existing_silver_data['indicator_code'] == indicator_code
+            ]
+            
+            if existing.empty:
+                # Novo indicador
+                self.logger.info(f"Novo indicador detectado: {indicator_code}")
+                changed_indicators.append(indicator_code)
+            else:
+                # Comparar campos importantes
+                existing_row = existing.iloc[0]
+                
+                # Lista de campos para comparar
+                fields_to_compare = [
+                    ('indicator_name', 'indicator_name'),
+                    ('category', 'category'),
+                    ('unit', 'unit'),
+                    ('aggregation', 'aggregation_method'),
+                    ('formula', 'calculation_formula'),
+                    ('is_inverted', 'is_inverted'),
+                    ('is_active', 'is_active')
+                ]
+                
+                for sheet_field, db_field in fields_to_compare:
+                    sheet_value = str(row.get(sheet_field, '')).strip()
+                    db_value = str(existing_row.get(db_field, '')).strip()
+                    
+                    # Normalizar valores booleanos
+                    if sheet_field in ['is_inverted', 'is_active']:
+                        sheet_value = '1' if sheet_value.upper() in ['TRUE', '1', 'SIM', 'YES'] else '0'
+                        db_value = '1' if str(db_value) == '1' or str(db_value).upper() == 'TRUE' else '0'
+                    
+                    if sheet_value != db_value:
+                        self.logger.info(
+                            f"Mudança detectada em {indicator_code}.{sheet_field}: "
+                            f"'{db_value}' → '{sheet_value}'"
+                        )
+                        changed_indicators.append(indicator_code)
+                        break
+                        
+        # Remover duplicatas
+        changed_indicators = list(set(changed_indicators))
+        
+        if changed_indicators:
+            self.logger.info(f"Total de {len(changed_indicators)} indicadores com mudanças")
+        else:
+            self.logger.info("Nenhuma mudança detectada nos indicadores")
+            
+        return changed_indicators
+        
+    def force_reprocess_changed_indicators(self, changed_indicators: List[str]):
+        """
+        V2.0.0: Força reprocessamento dos indicadores que mudaram.
+        
+        Args:
+            changed_indicators: Lista de indicator_codes que mudaram
+        """
+        if not changed_indicators:
+            return
+            
+        self.logger.info(f"Forçando reprocessamento de {len(changed_indicators)} indicadores...")
+        
+        try:
+            # Criar lista formatada para SQL IN clause
+            indicators_list = "','".join(changed_indicators)
+            
+            query = f"""
+            UPDATE bronze.performance_indicators
+            SET is_processed = 0
+            WHERE indicator_code IN ('{indicators_list}')
+              AND load_id = (
+                  SELECT MAX(load_id) 
+                  FROM bronze.performance_indicators
+              )
+            """
+            
+            with self.db_engine.connect() as conn:
+                result = conn.execute(text(query))
+                rows_updated = result.rowcount
+                conn.commit()
+                
+            self.logger.info(f"Marcados {rows_updated} registros para reprocessamento")
+            
+        except Exception as e:
+            self.logger.error(f"Erro ao marcar indicadores para reprocessamento: {e}")
+            # Não falhar o ETL por isso
+            
     def validate_data(self) -> bool:
         """
         Valida os dados extraídos.
@@ -301,61 +392,51 @@ class PerformanceIndicatorsETL:
         """
         self.logger.info("Aplicando transformações...")
         
+        # Copiar dados
         df = self.data.copy()
         
-        # T1: Padronização de códigos
-        df['indicator_code'] = df['indicator_code'].str.upper().str.replace(' ', '_').str.strip()
+        # Remover linhas vazias
+        df = df.dropna(subset=['indicator_code', 'indicator_name'])
         
-        # T2: Conversão de tipos
-        # Booleanos
-        bool_map = {'TRUE': 1, 'FALSE': 0, 'true': 1, 'false': 0, '1': 1, '0': 0, '': 0}
-        df['is_inverted'] = df.get('is_inverted', '').map(bool_map).fillna(0).astype(int)
-        df['is_active'] = df.get('is_active', '').map(bool_map).fillna(1).astype(int)
-        
-        # Remover created_date se existir (não faz parte do Bronze)
-        if 'created_date' in df.columns:
-            df = df.drop(columns=['created_date'])
-        
-        # Textos vazios
-        text_columns = ['formula', 'notes', 'description']
-        for col in text_columns:
+        # Padronizar valores booleanos
+        bool_columns = ['is_inverted', 'is_active']
+        for col in bool_columns:
             if col in df.columns:
-                df[col] = df[col].fillna('')
-                
-        # Aggregation default
-        if 'aggregation' in df.columns:
-            df['aggregation'] = df['aggregation'].fillna('CUSTOM')
-            
-        # T3: Enriquecimento de metadados
-        df['row_number'] = range(2, len(df) + 2)  # Número da linha na planilha
+                df[col] = df[col].apply(lambda x: 
+                    '1' if str(x).upper() in ['TRUE', '1', 'SIM', 'YES'] else '0'
+                )
         
-        # Calcular hash para cada linha
-        hash_columns = ['indicator_code', 'indicator_name', 'category', 'unit', 
-                       'aggregation', 'formula', 'is_inverted', 'is_active']
-        existing_columns = [col for col in hash_columns if col in df.columns]
-        
-        df['row_hash'] = df[existing_columns].apply(
-            lambda x: hashlib.md5(''.join(str(x[col]) for col in existing_columns).encode()).hexdigest(),
+        # Gerar hash do registro para detecção de mudanças
+        df['record_hash'] = df.apply(
+            lambda row: pd.util.hash_pandas_object(
+                row[['indicator_code', 'indicator_name', 'category', 'unit']], 
+                index=False
+            )[0], 
             axis=1
-        )
+        ).astype(str)
+        
+        # Adicionar ID único
+        df['load_id'] = int(datetime.now().timestamp())
         
         self.processed_data = df
-        self.logger.info("Transformações aplicadas com sucesso")
+        self.logger.info(f"Transformações aplicadas. {len(df)} registros prontos para carga")
         
-        return self.processed_data
+        return df
         
     def load(self, dry_run: bool = False) -> int:
         """
         Carrega dados no Bronze.
         
         Args:
-            dry_run: Se True, não executa a carga real
+            dry_run: Se True, não executa a carga
             
         Returns:
             Número de registros carregados
         """
-        self.logger.info("Iniciando carga no Bronze...")
-        
+        if self.processed_data is None or self.processed_data.empty:
+            self.logger.warning("Nenhum dado para carregar")
+            return 0
+            
         if dry_run:
             self.logger.info("Modo dry-run: dados não serão carregados")
             self.logger.info(f"Seriam carregados {len(self.processed_data)} registros")
@@ -408,6 +489,11 @@ class PerformanceIndicatorsETL:
                 trans.commit()
                 self.logger.info("Transação commitada com sucesso")
                 
+                # V2.0.0: Detectar e forçar reprocessamento de mudanças
+                changed_indicators = self.detect_changes()
+                if changed_indicators:
+                    self.force_reprocess_changed_indicators(changed_indicators)
+                
                 # Registrar auditoria (fora da transação principal)
                 try:
                     self._log_audit(conn, records_loaded, 'SUCCESS')
@@ -441,7 +527,8 @@ class PerformanceIndicatorsETL:
                 'status': status,
                 'details': error_msg or json.dumps({
                     'spreadsheet_id': SPREADSHEET_ID,
-                    'validation_errors': self.validation_errors[:10] if self.validation_errors else []
+                    'validation_errors': self.validation_errors[:10] if self.validation_errors else [],
+                    'version': '2.0.0'
                 })
             }
             
@@ -460,190 +547,131 @@ class PerformanceIndicatorsETL:
         """Executa validações pós-carga."""
         self.logger.info("Executando validações pós-carga...")
         
-        with self.db_engine.connect() as conn:
-            # Verificar códigos únicos
-            result = conn.execute(text("""
-                SELECT COUNT(*) total, COUNT(DISTINCT indicator_code) unicos
-                FROM bronze.performance_indicators
-                WHERE load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_indicators)
-            """)).fetchone()
+        try:
+            # Verificar se os dados foram carregados
+            query = "SELECT COUNT(*) as total FROM bronze.performance_indicators WHERE load_id = (SELECT MAX(load_id) FROM bronze.performance_indicators)"
+            result = pd.read_sql(query, self.db_engine)
             
-            if result.total != result.unicos:
-                self.logger.warning(f"Códigos duplicados detectados: {result.total - result.unicos}")
+            total_loaded = result.iloc[0]['total']
+            self.logger.info(f"Validação pós-carga: {total_loaded} registros encontrados no Bronze")
+            
+            if total_loaded != len(self.processed_data):
+                self.logger.warning(f"Divergência: esperados {len(self.processed_data)}, encontrados {total_loaded}")
                 
-            # Verificar fórmulas não vazias
-            result = conn.execute(text("""
-                SELECT 
-                    COUNT(*) total,
-                    COUNT(CASE WHEN formula != '' AND formula != 'nan' THEN 1 END) com_formula
-                FROM bronze.performance_indicators
-                WHERE load_timestamp = (SELECT MAX(load_timestamp) FROM bronze.performance_indicators)
-            """)).fetchone()
+        except Exception as e:
+            self.logger.error(f"Erro na validação pós-carga: {e}")
             
-            formula_percent = (result.com_formula / result.total * 100) if result.total > 0 else 0
-            self.logger.info(f"Indicadores com fórmula: {formula_percent:.1f}%")
-            
-            if formula_percent < 90:
-                self.logger.warning("Menos de 90% dos indicadores têm fórmula definida")
-                
-    def run(self, dry_run: bool = False):
+    def execute_silver_procedure(self):
         """
-        Executa o pipeline completo.
-        
-        Args:
-            dry_run: Se True, não executa a carga real
+        V2.0.0: Executa a procedure Bronze to Silver após a carga.
         """
-        start_time = datetime.now()
-        self.config['start_time'] = start_time
+        self.logger.info("Executando procedure Bronze to Silver...")
         
         try:
-            self.logger.info("="*60)
-            self.logger.info("Iniciando ETL-IND-001 - Performance Indicators")
-            self.logger.info(f"Timestamp: {start_time}")
-            self.logger.info("="*60)
-            
-            # Setup
-            self.setup_connections()
-            
-            # Extract
-            self.extract()
-            
-            # Validate
-            if not self.validate_data():
-                raise ValueError("Falha na validação dos dados")
+            with self.db_engine.connect() as conn:
+                # Executar procedure
+                conn.execute(text("""
+                    EXEC bronze.prc_process_indicators_to_silver 
+                        @load_id = NULL,
+                        @validate_only = 0,
+                        @debug_mode = 1
+                """))
+                conn.commit()
                 
-            # Transform
-            self.transform()
-            
-            # Load
-            records_loaded = self.load(dry_run)
-            
-            # Post-load validation
-            if not dry_run and records_loaded > 0:
-                self.run_post_load_validation()
-                
-            self.logger.info("="*60)
-            self.logger.info("ETL-IND-001 concluído com sucesso!")
-            self.logger.info(f"Tempo de execução: {datetime.now() - start_time}")
-            self.logger.info("="*60)
+            self.logger.info("Procedure Bronze to Silver executada com sucesso")
             
         except Exception as e:
-            self.logger.error("="*60)
-            self.logger.error(f"ETL-IND-001 falhou: {e}")
-            self.logger.error("="*60)
-            raise
-
-# ==============================================================================
-# 5. FUNÇÕES AUXILIARES
-# ==============================================================================
-
-def parse_arguments() -> argparse.Namespace:
-    """
-    Define e processa argumentos da linha de comando.
+            self.logger.error(f"Erro ao executar procedure Bronze to Silver: {e}")
+            # Não falhar o ETL por isso
     
-    Returns:
-        Namespace com os argumentos parseados
-    """
-    parser = argparse.ArgumentParser(
-        description='ETL-IND-001 - Extração de Indicadores de Performance',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
-    )
-    
-    parser.add_argument(
-        '--config',
-        type=str,
-        default=str(CONFIG_DIR / 'etl_001_config.json'),
-        help='Arquivo de configuração (default: config/etl_001_config.json)'
-    )
-    
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Ativa modo debug com logs detalhados'
-    )
-    
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Executa sem carregar dados no banco'
-    )
-    
-    parser.add_argument(
-        '--force-reload',
-        action='store_true',
-        help='Força recarga mesmo se dados não mudaram'
-    )
-    
-    return parser.parse_args()
-
-def load_config(config_path: str) -> Dict[str, Any]:
-    """
-    Carrega configuração do arquivo JSON.
-    
-    Args:
-        config_path: Caminho do arquivo de configuração
+    def run(self, dry_run: bool = False) -> bool:
+        """
+        Executa o pipeline ETL completo.
         
-    Returns:
-        Dicionário de configuração
-    """
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        Args:
+            dry_run: Se True, não executa a carga
             
-        # Substituir variáveis de ambiente (usando os nomes corretos do .env)
-        config['database']['server'] = os.getenv('DB_SERVER', config['database']['server'])
-        config['database']['database'] = os.getenv('DB_DATABASE', config['database']['database'])
-        config['database']['user'] = os.getenv('DB_USERNAME', config['database']['user'])
-        config['database']['password'] = os.getenv('DB_PASSWORD', config['database']['password'])
+        Returns:
+            True se executado com sucesso, False caso contrário
+        """
+        self.config['start_time'] = datetime.now()
+        self.logger.info("=" * 80)
+        self.logger.info("INICIANDO ETL-IND-001: Performance Indicators (V2.0.0)")
+        self.logger.info("=" * 80)
         
-        # Driver ODBC (caso esteja no .env)
-        if os.getenv('DB_DRIVER'):
-            config['database']['driver'] = os.getenv('DB_DRIVER')
-        
-        return config
-        
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Arquivo de configuração não encontrado: {config_path}")
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Erro ao parsear arquivo de configuração: {e}")
+        try:
+            # 1. Setup
+            self.setup_credentials()
+            self.setup_database()
+            
+            # 2. V2.0.0: Carregar dados existentes do Silver
+            self.load_existing_silver_data()
+            
+            # 3. Extract
+            self.extract()
+            
+            # 4. Validate
+            if not self.validate_data():
+                if not self.config.get('force_load_on_validation_error', False):
+                    self.logger.error("Validação falhou. ETL abortado.")
+                    return False
+                self.logger.warning("Validação falhou mas force_load está ativo. Continuando...")
+            
+            # 5. Transform
+            self.transform()
+            
+            # 6. Load
+            records_loaded = self.load(dry_run)
+            
+            if not dry_run and records_loaded > 0:
+                # 7. Post-load validation
+                self.run_post_load_validation()
+                
+                # 8. V2.0.0: Executar procedure Bronze to Silver
+                self.execute_silver_procedure()
+            
+            self.logger.info("=" * 80)
+            self.logger.info("ETL CONCLUÍDO COM SUCESSO")
+            self.logger.info("=" * 80)
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Erro durante execução do ETL: {e}")
+            self.logger.error("=" * 80)
+            self.logger.error("ETL FALHOU")
+            self.logger.error("=" * 80)
+            return False
 
 # ==============================================================================
-# 6. FUNÇÃO PRINCIPAL
+# MAIN
 # ==============================================================================
 
 def main():
-    """Função principal do script."""
-    # Parse argumentos
-    args = parse_arguments()
+    """Função principal."""
+    import argparse
     
-    # Configurar logging
-    log_filename = f"ETL-IND-001_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-    logger = setup_logging(log_filename)
+    parser = argparse.ArgumentParser(
+        description='ETL de Indicadores de Performance (Google Sheets → Bronze) V2.0.0'
+    )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Executa sem carregar dados (validação apenas)'
+    )
+    parser.add_argument(
+        '--config',
+        default=CONFIG_FILE,
+        help='Arquivo de configuração customizado'
+    )
     
-    if args.debug:
-        logger.setLevel(logging.DEBUG)
-        
-    try:
-        # Carregar configuração
-        config = load_config(args.config)
-        config['force_reload'] = args.force_reload
-        
-        # Criar e executar ETL
-        etl = PerformanceIndicatorsETL(config, logger)
-        etl.run(args.dry_run)
-        
-    except KeyboardInterrupt:
-        logger.warning("Execução interrompida pelo usuário")
-        sys.exit(1)
-        
-    except Exception as e:
-        logger.error(f"Erro fatal: {e}", exc_info=True)
-        sys.exit(1)
-
-# ==============================================================================
-# 7. EXECUÇÃO
-# ==============================================================================
+    args = parser.parse_args()
+    
+    # Executar ETL
+    etl = IndicatorsETL(config_file=args.config)
+    success = etl.run(dry_run=args.dry_run)
+    
+    # Retornar código de saída apropriado
+    sys.exit(0 if success else 1)
 
 if __name__ == '__main__':
     main()
