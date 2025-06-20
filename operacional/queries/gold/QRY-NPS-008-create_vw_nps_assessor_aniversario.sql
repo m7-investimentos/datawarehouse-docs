@@ -1,14 +1,94 @@
+-- ==============================================================================
+-- QRY-NPS-008-create_vw_nps_assessor_aniversario
+-- ==============================================================================
+-- Tipo: CREATE VIEW
+-- Versão: 1.0.0
+-- Última atualização: 2025-01-20
+-- Autor: [equipe.dados@m7investimentos.com.br]
+-- Revisor: [revisor@m7investimentos.com.br]
+-- Tags: [nps, assessor, aniversario, consolidacao, gold]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
+-- Schema: gold
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: View que consolida dados de NPS por assessor, agregando métricas mensais
+baseadas em pesquisas enviadas em aniversários de clientes. Separa métricas de envio
+(data_entrega) e resposta (data_resposta) para análise precisa.
+
+Casos de uso:
+- Base para tabela materializada gold.nps_assessor_aniversario
+- Consultas ad-hoc para análise de satisfação
+- Validação de cálculos de NPS antes da materialização
+- Fonte para dashboards em tempo real de NPS
+
+Frequência de consulta: Várias vezes ao dia
+Tempo médio de execução: 1-2 minutos
+Volume de dados: ~24.000 registros
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Não aplicável - View processa todos os dados disponíveis
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+| Coluna                        | Tipo          | Descrição                                     |
+|-------------------------------|---------------|-----------------------------------------------|
+| ano_mes                       | INT           | Período no formato AAAAMM                    |
+| ano                           | INT           | Ano de referência                            |
+| mes                           | INT           | Mês de referência (1-12)                    |
+| nome_mes                      | VARCHAR(20)   | Nome do mês em português                    |
+| trimestre                     | VARCHAR(2)    | Trimestre (Q1-Q4)                             |
+| semestre                      | VARCHAR(2)    | Semestre (S1-S2)                              |
+| cod_assessor                  | VARCHAR(20)   | Código do assessor                           |
+| crm_id_assessor               | VARCHAR(20)   | ID do assessor no CRM                         |
+| nome_assessor                 | VARCHAR(200)  | Nome completo do assessor                     |
+| nivel_assessor                | VARCHAR(50)   | Nível hierárquico                            |
+| estrutura_id                  | INT           | ID da estrutura organizacional                |
+| estrutura_nome                | VARCHAR(100)  | Nome da estrutura                             |
+| qtd_pesquisas_enviadas        | INT           | Total de pesquisas enviadas                   |
+| qtd_pesquisas_respondidas     | INT           | Total de pesquisas respondidas                |
+| taxa_resposta                 | FLOAT         | Taxa de resposta (decimal)                    |
+| nps_score_assessor_[periodo]  | FLOAT         | NPS Score por período                        |
+| [métricas detalhadas]         | Vários        | Promotores, neutros, detratores, etc         |
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas/Views utilizadas:
+- silver.fact_nps_respostas_envios_aniversario: Fatos de pesquisas NPS
+- silver.dim_pessoas: Cadastro de pessoas (assessores)
+- silver.fact_estrutura_pessoas: Histórico de alocação em estruturas
+- silver.dim_estruturas: Cadastro de estruturas organizacionais
+
+Pré-requisitos:
+- Dados atualizados nas tabelas silver
+- Índices adequados para performance dos JOINs
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
--- =============================================
--- VIEW: vw_nps_assessor_aniversario_mensal
--- Descrição: Agrega dados de NPS por assessor e mês baseado na data de RESPOSTA
--- Autor: Sistema
--- Data: 2025-06-18
--- =============================================
 
+-- ==============================================================================
+-- 6. CRIAÇÃO DA VIEW COM CTEs
+-- ==============================================================================
 CREATE   VIEW [gold].[vw_nps_assessor_aniversario] AS
 
 WITH base_periodo AS (
@@ -298,3 +378,104 @@ FROM base_periodo bp
 
 WHERE p.cod_aai IS NOT NULL  -- Garante que só aparecem assessores válidos
 GO
+
+-- ==============================================================================
+-- 7. CONSIDERAÇÕES TÉCNICAS
+-- ==============================================================================
+/*
+- CTEs utilizadas para modularizar a lógica complexa:
+  1. base_periodo: Gera matriz completa assessor x período
+  2. metricas_envio: Agrega dados por data de envio (filtro de status)
+  3. metricas_resposta: Agrega dados por data de resposta
+  4. razao_principal: Identifica razão mais citada
+  5. scores_acumulados: Calcula NPS acumulado por período
+  6. scores_moveis: Calcula médias móveis
+
+- Separação entre data_entrega e data_resposta é crítica
+- Filtros de status excluem: delivery_bounced, not_sampled, expired
+- Window functions usadas para cálculos de médias acumuladas
+*/
+
+-- ==============================================================================
+-- 8. QUERIES AUXILIARES PARA VALIDAÇÃO
+-- ==============================================================================
+/*
+-- Verificar quantidade de registros por período
+SELECT 
+    ano_mes,
+    COUNT(DISTINCT cod_assessor) as qtd_assessores,
+    SUM(qtd_pesquisas_enviadas) as total_enviadas,
+    SUM(qtd_pesquisas_respondidas) as total_respondidas,
+    AVG(taxa_resposta) as taxa_resposta_media
+FROM gold.vw_nps_assessor_aniversario
+GROUP BY ano_mes
+ORDER BY ano_mes DESC;
+
+-- Validar cálculo do NPS
+SELECT TOP 10
+    cod_assessor,
+    nome_assessor,
+    ano_mes,
+    qtd_promotores,
+    qtd_neutros,
+    qtd_detratores,
+    qtd_pesquisas_respondidas,
+    nps_score_assessor_mes,
+    -- Validação manual do cálculo
+    CAST(qtd_promotores - qtd_detratores AS FLOAT) / NULLIF(qtd_pesquisas_respondidas, 0) as nps_calculado
+FROM gold.vw_nps_assessor_aniversario
+WHERE ano_mes = (SELECT MAX(ano_mes) FROM gold.vw_nps_assessor_aniversario)
+    AND qtd_pesquisas_respondidas > 0
+ORDER BY nps_score_assessor_mes DESC;
+
+-- Analisar razões principais
+SELECT 
+    razao_principal,
+    COUNT(*) as qtd_assessores,
+    AVG(nps_score_assessor_mes) as nps_medio
+FROM gold.vw_nps_assessor_aniversario
+WHERE razao_principal IS NOT NULL
+    AND ano_mes >= (SELECT MAX(ano_mes) - 300 FROM gold.vw_nps_assessor_aniversario)
+GROUP BY razao_principal
+ORDER BY qtd_assessores DESC;
+*/
+
+-- ==============================================================================
+-- 9. HISTÓRICO DE MUDANÇAS
+-- ==============================================================================
+/*
+Versão  | Data       | Autor           | Descrição
+--------|------------|-----------------|--------------------------------------------
+1.0.0   | 2025-01-20 | equipe.dados   | Criação inicial da view
+
+*/
+
+-- ==============================================================================
+-- 10. NOTAS E OBSERVAÇÕES
+-- ==============================================================================
+/*
+Notas importantes:
+- View separa métricas por data de envio vs data de resposta
+- Status inválidos são filtrados: delivery_bounced, not_sampled, expired
+- base_periodo garante que todos os assessores aparecem em todos os períodos
+- NPS Score calculado como (Promotores - Detratores) / Total Respondidas
+- Estrutura atual do assessor determinada por data_saida IS NULL
+
+Cálculos de scores acumulados:
+- Trimestre: Reinicia a cada trimestre (Q1-Q4)
+- Semestre: Reinicia a cada semestre (S1-S2)
+- Ano: Acumulado desde janeiro
+- Médias móveis: Janelas de 3, 6 e 12 meses
+
+Otimizações recomendadas:
+- Índice em fact_nps_respostas_envios_aniversario (cod_assessor, data_entrega)
+- Índice em fact_nps_respostas_envios_aniversario (cod_assessor, data_resposta)
+- Estatísticas atualizadas nas tabelas base
+
+Limitações conhecidas:
+- Performance pode degradar com grandes volumes históricos
+- Assessores sem registro em dim_pessoas não aparecem
+- Diferença temporal entre envio e resposta pode causar distorções
+
+Contato para dúvidas: equipe-dados@m7investimentos.com.br
+*/

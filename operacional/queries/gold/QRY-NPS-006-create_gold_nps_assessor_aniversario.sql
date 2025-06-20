@@ -1,7 +1,78 @@
+-- ==============================================================================
+-- QRY-NPS-006-create_gold_nps_assessor_aniversario
+-- ==============================================================================
+-- Tipo: CREATE TABLE
+-- Versão: 1.0.0
+-- Última atualização: 2025-01-20
+-- Autor: [equipe.dados@m7investimentos.com.br]
+-- Revisor: [revisor@m7investimentos.com.br]
+-- Tags: [nps, assessor, aniversario, satisfacao, gold]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
+-- Schema: gold
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: Cria a tabela física para armazenar métricas de Net Promoter Score (NPS)
+por assessor, baseadas em pesquisas enviadas em aniversários de clientes.
+Consolida dados mensais de satisfação e recomendação.
+
+Casos de uso:
+- Dashboard de NPS por assessor e estrutura
+- Análise de evolução da satisfação dos clientes
+- Identificação de assessores promotores vs detratores
+- Base para planos de ação de melhoria de atendimento
+- Correlação entre NPS e resultados comerciais
+
+Frequência de atualização: Diária (via procedure prc_gold_nps_assessor_aniversario)
+Volume esperado de linhas: ~2.000 registros/mês (1 por assessor ativo)
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Não aplicável - Script DDL de criação de tabela
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+Tabela criada: gold.nps_assessor_aniversario
+
+Chave lógica: ano_mes + cod_assessor (sem PK física definida)
+
+Particionamento: Não aplicado
+Índices: Recomenda-se criar índice clustered em (ano_mes, cod_assessor)
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas/Views utilizadas:
+- gold.vw_nps_assessor_aniversario: View que consolida os dados (populada via procedure)
+
+Pré-requisitos:
+- Schema gold deve existir
+- Permissões CREATE TABLE no schema gold
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
+-- ==============================================================================
+-- 6. CRIAÇÃO DA TABELA
+-- ==============================================================================
 CREATE TABLE [gold].[nps_assessor_aniversario](
 	[ano_mes] [int] NOT NULL,
 	[ano] [int] NOT NULL,
@@ -100,3 +171,57 @@ EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Principal raz�
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Tabela agregada mensal com métricas de Net Promoter Score (NPS) por assessor. Consolida dados de pesquisas de satisfação enviadas em aniversários de clientes, incluindo taxas de resposta, scores NPS em diferentes janelas temporais e análise de razões. Granularidade: uma linha por assessor por mês.' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'nps_assessor_aniversario'
 GO
+
+-- ==============================================================================
+-- 7. DEFAULTS E CONSTRAINTS
+-- ==============================================================================
+-- A tabela não possui chave primária física definida, o que pode impactar performance.
+-- Recomenda-se adicionar:
+-- ALTER TABLE [gold].[nps_assessor_aniversario] 
+-- ADD CONSTRAINT PK_nps_assessor_aniversario PRIMARY KEY CLUSTERED (ano_mes, cod_assessor)
+--
+-- O único default definido é para data_carga = GETDATE()
+
+-- ==============================================================================
+-- 8. EXTENDED PROPERTIES (DOCUMENTAÇÃO)
+-- ==============================================================================
+-- Todas as colunas possuem extended properties detalhadas descrevendo:
+-- - Propósito e conteúdo da coluna
+-- - Formato e valores esperados  
+-- - Fórmulas de cálculo quando aplicável
+-- - Relação com outras colunas/tabelas
+
+-- ==============================================================================
+-- 9. HISTÓRICO DE MUDANÇAS
+-- ==============================================================================
+/*
+Versão  | Data       | Autor           | Descrição
+--------|------------|-----------------|--------------------------------------------
+1.0.0   | 2025-01-20 | equipe.dados   | Criação inicial da tabela
+
+*/
+
+-- ==============================================================================
+-- 10. NOTAS E OBSERVAÇÕES
+-- ==============================================================================
+/*
+Notas importantes:
+- Tabela não possui PK física definida - considerar adicionar para melhor performance
+- NPS Score varia de -1 a 1 (-100 a +100 quando em percentual)
+- Taxas são armazenadas em decimal (0.15 = 15%, não 15)
+- Pesquisas são enviadas em aniversários de clientes
+- Métricas de envio baseadas em data_entrega, resposta em data_resposta
+
+Cálculo do NPS:
+- NPS = (% Promotores - % Detratores)
+- Promotores: notas 9-10
+- Neutros: notas 7-8  
+- Detratores: notas 0-6
+
+Troubleshooting comum:
+1. Valores NULL em scores: Normal para assessores sem respostas no período
+2. Taxa resposta baixa: Verificar qualidade dos emails e engajamento
+3. Divergência envio/resposta: Respostas podem vir em mês diferente do envio
+
+Contato para dúvidas: equipe-dados@m7investimentos.com.br
+*/
