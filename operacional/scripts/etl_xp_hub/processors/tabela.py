@@ -22,16 +22,25 @@ class Tabela:
     para transformar dados de diferentes tipos de arquivo.
     """
 
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: Optional[str] = None, dataframe: Optional[pd.DataFrame] = None):
         """
-        Inicializa com carregamento do arquivo Excel.
+        Inicializa com carregamento do arquivo Excel ou DataFrame pronto.
 
         Args:
             file_path: Caminho para o arquivo Excel
+            dataframe: DataFrame já carregado (alternativa ao file_path)
         """
+        if file_path is None and dataframe is None:
+            raise ValueError("Deve fornecer file_path ou dataframe")
+            
         self.file_path = file_path
         self.original_columns = None
-        self.df = self.load_excel()
+        
+        if dataframe is not None:
+            self.df = dataframe.copy()
+            self.original_columns = list(self.df.columns)
+        else:
+            self.df = self.load_excel()
 
     def load_excel(self) -> pd.DataFrame:
         """
@@ -118,7 +127,7 @@ class Tabela:
         """
         for column in columns:
             if column in self.df.columns:
-                self.df[column] = self.df[column].apply(self._format_date_br)
+                self.df[column] = self.df[column].apply(self._format_date_br_robust)
 
         return self
 
@@ -136,6 +145,56 @@ class Tabela:
             if column in self.df.columns:
                 self.df[column] = self.df[column].apply(self._format_numeric)
 
+        return self
+    
+    def validate_decimal_limits(self, columns: List[str], precision: int = 16, scale: int = 4) -> "Tabela":
+        """
+        Valida e trata valores numéricos que excedem limites de DECIMAL/NUMERIC do SQL Server.
+        Substitui valores que excedem o limite por NULL para evitar erros de overflow.
+        
+        Args:
+            columns: Lista de colunas numéricas para validar
+            precision: Total de dígitos (padrão 16)
+            scale: Dígitos após a vírgula (padrão 4)
+            
+        Returns:
+            Self para permitir method chaining
+        """
+        # Calcula o valor máximo baseado na precisão e escala
+        max_digits_before_decimal = precision - scale
+        max_value = 10 ** max_digits_before_decimal - 1
+        
+        print(f"\n🔍 Validando limites decimais para colunas numéricas...")
+        print(f"   Precisão: {precision}, Escala: {scale}")
+        print(f"   Valor máximo permitido: {max_value:,.{scale}f}")
+        
+        valores_alterados = 0
+        
+        for column in columns:
+            if column in self.df.columns:
+                # Converte para float64 para garantir comparação correta
+                self.df[column] = pd.to_numeric(self.df[column], errors='coerce')
+                
+                # Identifica valores que excedem o limite
+                mask_overflow = self.df[column].abs() > max_value
+                count_overflow = mask_overflow.sum()
+                
+                if count_overflow > 0:
+                    # Captura alguns exemplos dos valores que serão alterados
+                    exemplos = self.df.loc[mask_overflow, column].head(3).tolist()
+                    
+                    print(f"   ⚠️ Coluna '{column}': {count_overflow} valores excedem o limite")
+                    print(f"      Exemplos: {[f'{v:,.2f}' for v in exemplos[:3]]}")
+                    
+                    # Substitui valores que excedem o limite por NULL
+                    self.df.loc[mask_overflow, column] = None
+                    valores_alterados += count_overflow
+        
+        if valores_alterados > 0:
+            print(f"   ✅ Total de valores alterados para NULL: {valores_alterados}")
+        else:
+            print(f"   ✅ Nenhum valor excede os limites")
+            
         return self
 
     def format_boolean_columns(self, columns: List[str]) -> "Tabela":
@@ -165,21 +224,21 @@ class Tabela:
             Self para permitir method chaining
         """
         return self.format_boolean_columns(columns)
-    
+
     def clean_monetary_columns(self, columns: List[str]) -> "Tabela":
         """
         Limpa e converte colunas monetárias brasileiras (R$ 1.234,56) para float.
-        
+
         Args:
             columns: Lista de nomes de colunas monetárias
-            
+
         Returns:
             Self para permitir method chaining
         """
         for column in columns:
             if column in self.df.columns:
                 self.df[column] = self.df[column].apply(self._clean_monetary_value)
-        
+
         return self
 
     def clean_column_code(self, column: str, chars_to_remove: str = "A") -> "Tabela":
@@ -446,16 +505,48 @@ class Tabela:
         except:
             return None
 
-    def _format_date_br(self, data: Any) -> Optional[date]:
-        """Converte data para formato date, considerando formato brasileiro."""
+    def _format_date_br(self, data: Any) -> Optional[datetime]:
+        """Converte data para formato datetime, considerando formato brasileiro (DD/MM/YYYY)."""
         if pd.isna(data) or str(data).strip() == "":
             return None
 
         try:
+            # Usa dayfirst=True para interpretar corretamente datas brasileiras
+            # Mantém como datetime para preservar a informação completa
             dt = pd.to_datetime(data, dayfirst=True, errors="coerce")
-            if pd.isna(dt):
-                return None
-            return dt.date()
+            return dt if not pd.isna(dt) else None
+        except:
+            return None
+
+    def _format_date_br_robust(self, data: Any) -> Optional[datetime]:
+        """Versão mais robusta para conversão de datas brasileiras.
+        Tenta múltiplos formatos para garantir conversão correta.
+        """
+        if pd.isna(data) or str(data).strip() == "":
+            return None
+
+        data_str = str(data).strip()
+
+        # Lista de formatos para tentar
+        formatos = [
+            "%d/%m/%Y",  # 31/12/2024
+            "%d-%m-%Y",  # 31-12-2024
+            "%d.%m.%Y",  # 31.12.2024
+            "%d/%m/%Y %H:%M:%S",  # 31/12/2024 14:30:00
+            "%d/%m/%Y %H:%M",  # 31/12/2024 14:30
+            "%Y-%m-%d",  # 2024-12-31 (ISO)
+            "%Y-%m-%d %H:%M:%S",  # 2024-12-31 14:30:00
+        ]
+
+        for fmt in formatos:
+            try:
+                return pd.to_datetime(data_str, format=fmt)
+            except:
+                continue
+
+        # Se nenhum formato específico funcionou, tenta o parser genérico
+        try:
+            return pd.to_datetime(data, dayfirst=True, errors="coerce")
         except:
             return None
 
@@ -476,24 +567,25 @@ class Tabela:
             valor = valor.strip().lower()
             return 1 if valor in ["sim", "ativo"] else 0
         return 0
-    
+
     def _clean_monetary_value(self, valor: Any) -> float:
         """Limpa e converte valores monetários brasileiros para float."""
         if pd.isna(valor) or valor is None:
             return 0.0
-        
+
         valor_str = str(valor).strip()
-        
+
         # Verifica se é um valor negativo
         negativo = "-" in valor_str
-        
+
         # Remove R$, espaços e o próprio símbolo de negativo
         import re
+
         valor_str = re.sub(r"R\$|\s|-", "", valor_str)
-        
+
         # Substituição de separadores brasileiros (1.234,56 → 1234.56)
         valor_str = valor_str.replace(".", "").replace(",", ".")
-        
+
         try:
             resultado = float(valor_str)
             # Aplica o sinal negativo se necessário
@@ -503,58 +595,62 @@ class Tabela:
 
     # Métodos de pós-processamento
     @staticmethod
-    def filter_new_records_by_key(df: pd.DataFrame, table_name: str, engine, key_column: str) -> pd.DataFrame:
+    def filter_new_records_by_key(
+        df: pd.DataFrame, table_name: str, engine, key_column: str
+    ) -> pd.DataFrame:
         """
         Filtra DataFrame para conter apenas registros com chaves que não existem no banco.
         Útil para inserções incrementais baseadas em chave única.
-        
+
         Args:
             df: DataFrame a ser filtrado
             table_name: Nome completo da tabela no banco
             engine: Engine do SQLAlchemy
             key_column: Nome da coluna chave para verificar duplicatas
-            
+
         Returns:
             DataFrame filtrado com apenas registros novos
         """
         try:
             from sqlalchemy import text
-            
+
             if key_column not in df.columns:
-                print(f"⚠️ Coluna {key_column} não encontrada. Retornando todos os registros.")
+                print(
+                    f"⚠️ Coluna {key_column} não encontrada. Retornando todos os registros."
+                )
                 return df
-            
+
             # Remove possíveis duplicatas no próprio DataFrame
-            df = df.drop_duplicates(subset=[key_column], keep='last')
-            
+            df = df.drop_duplicates(subset=[key_column], keep="last")
+
             # Busca todas as chaves existentes no banco
             with engine.connect() as conn:
                 query = text(f"SELECT DISTINCT {key_column} FROM {table_name}")
                 result = conn.execute(query)
                 existing_keys = {str(row[0]) for row in result if row[0] is not None}
-            
+
             print(f"\n🔍 Verificando registros existentes por {key_column}...")
             print(f"   Registros no banco: {len(existing_keys)}")
             print(f"   Registros no arquivo (sem duplicatas): {len(df)}")
-            
+
             # Converte chave para string para comparação
             df[key_column] = df[key_column].astype(str)
-            
+
             # Filtra apenas os novos
             df_filtered = df[~df[key_column].isin(existing_keys)]
-            
+
             print(f"   Novos registros a inserir: {len(df_filtered)}")
-            
+
             if len(df_filtered) == 0:
                 print("   ℹ️ Nenhum registro novo encontrado.")
-            
+
             return df_filtered
-            
+
         except Exception as e:
             print(f"⚠️ Erro ao filtrar registros: {str(e)}")
             print("   Continuando com todos os registros...")
             return df
-    
+
     @staticmethod
     def post_load_cleanup_by_period(
         df: pd.DataFrame, table_name: str, engine, date_column: Optional[str] = None
@@ -562,6 +658,8 @@ class Tabela:
         """
         Remove registros antigos do mesmo ano/mês que foi inserido.
         Útil para tabelas acumuladas que precisam substituir dados do mesmo período.
+        
+        VERSÃO CORRIGIDA: Suporta colunas VARCHAR no formato YYYYMM (ano_mes)
 
         Args:
             df: DataFrame que foi inserido
@@ -578,18 +676,28 @@ class Tabela:
             # Se não especificou coluna, tenta detectar automaticamente
             if date_column is None:
                 # Lista de possíveis colunas de data em ordem de prioridade
-                possible_date_columns = ['data_ref', 'ano_mes', 'data_referencia', 'periodo', 'mes_ano']
-                
+                possible_date_columns = [
+                    "data_ref",
+                    "ano_mes",
+                    "data_referencia",
+                    "periodo",
+                    "mes_ano",
+                ]
+
                 for col in possible_date_columns:
                     if col in df.columns:
                         date_column = col
-                        print(f"🔍 Coluna de data detectada automaticamente: {date_column}")
+                        print(
+                            f"🔍 Coluna de data detectada automaticamente: {date_column}"
+                        )
                         break
-                
+
                 if date_column is None:
-                    print("⚠️ Nenhuma coluna de data encontrada. Pulando limpeza de registros antigos.")
+                    print(
+                        "⚠️ Nenhuma coluna de data encontrada. Pulando limpeza de registros antigos."
+                    )
                     return {"status": "skipped", "reason": "no date column found"}
-            
+
             # Verificar se coluna de data existe
             if date_column not in df.columns:
                 print(
@@ -597,85 +705,153 @@ class Tabela:
                 )
                 return {"status": "skipped", "reason": f"no {date_column} column"}
 
-            # Converter para datetime se necessário
+            # NOVA LÓGICA: Detectar se é coluna ano_mes (VARCHAR YYYYMM)
+            is_varchar_yyyymm = False
+            periodos_varchar = []
+            
+            # Verificar se todos os valores são strings de 6 dígitos
             try:
-                # Primeiro tenta converter diretamente
-                df[date_column] = pd.to_datetime(df[date_column])
+                sample_values = df[date_column].dropna().astype(str).str.strip()
+                if all(len(v) == 6 and v.isdigit() for v in sample_values.head(10)):
+                    is_varchar_yyyymm = True
+                    periodos_varchar = df[date_column].astype(str).str.strip().unique().tolist()
+                    print(f"✅ Detectado formato VARCHAR YYYYMM na coluna {date_column}")
             except:
-                # Se falhar, verifica se é formato YYYYMM (ano_mes)
+                pass
+
+            if is_varchar_yyyymm:
+                # Lógica específica para VARCHAR YYYYMM
+                if len(periodos_varchar) == 0:
+                    return {"status": "skipped", "reason": "no periods found"}
+
+                print(f"\n🧹 Iniciando limpeza de registros antigos...")
+                print(f"   Períodos a limpar: {periodos_varchar}")
+
+                total_deleted = 0
+
+                with engine.connect() as conn:
+                    with conn.begin():
+                        for periodo in periodos_varchar:
+                            # Query para contar registros antes de deletar
+                            count_query = text(
+                                f"""
+                                SELECT COUNT(*) 
+                                FROM {table_name}
+                                WHERE {date_column} = :periodo
+                                AND data_carga < CAST(GETDATE() AS DATE)
+                                """
+                            )
+
+                            result = conn.execute(count_query, {"periodo": periodo})
+                            count_before = result.scalar()
+
+                            if count_before > 0:
+                                # Query para deletar registros antigos do mesmo período
+                                delete_query = text(
+                                    f"""
+                                    DELETE FROM {table_name}
+                                    WHERE {date_column} = :periodo
+                                    AND data_carga < CAST(GETDATE() AS DATE)
+                                    """
+                                )
+
+                                result = conn.execute(delete_query, {"periodo": periodo})
+                                deleted = result.rowcount
+                                total_deleted += deleted
+
+                                # Extrair ano e mês para display
+                                ano = periodo[:4]
+                                mes = periodo[4:6]
+                                print(
+                                    f"   🗑️ Período {ano}-{mes}: {deleted} registros antigos removidos"
+                                )
+
+                print(
+                    f"   ✅ Limpeza concluída! Total removido: {total_deleted} registros\n"
+                )
+
+                return {
+                    "status": "success",
+                    "periods_cleaned": periodos_varchar,
+                    "total_deleted": total_deleted,
+                    "cleanup_type": "varchar_yyyymm"
+                }
+            
+            else:
+                # Lógica original para colunas DATE/DATETIME
+                # Converter para datetime se necessário
                 try:
-                    # Converte para string e verifica se tem 6 dígitos (YYYYMM)
-                    sample_value = str(df[date_column].iloc[0])
-                    if len(sample_value) == 6 and sample_value.isdigit():
-                        df[date_column] = pd.to_datetime(df[date_column].astype(str), format='%Y%m')
-                    else:
-                        raise ValueError(f"Formato de data não reconhecido: {sample_value}")
+                    df[date_column] = pd.to_datetime(df[date_column])
                 except Exception as e:
                     print(f"⚠️ Erro ao converter coluna {date_column}: {str(e)}")
-                    return {"status": "error", "reason": f"date conversion failed: {str(e)}"}
+                    return {
+                        "status": "error",
+                        "reason": f"date conversion failed: {str(e)}",
+                    }
 
-            # Extrair ano/mês únicos
-            periodos = df[date_column].dt.to_period("M").unique()
+                # Extrair ano/mês únicos
+                periodos = df[date_column].dt.to_period("M").unique()
 
-            if len(periodos) == 0:
-                return {"status": "skipped", "reason": "no periods found"}
+                if len(periodos) == 0:
+                    return {"status": "skipped", "reason": "no periods found"}
 
-            print(f"\n🧹 Iniciando limpeza de registros antigos...")
-            print(f"   Períodos a limpar: {[str(p) for p in periodos]}")
+                print(f"\n🧹 Iniciando limpeza de registros antigos...")
+                print(f"   Períodos a limpar: {[str(p) for p in periodos]}")
 
-            total_deleted = 0
+                total_deleted = 0
 
-            with engine.connect() as conn:
-                with conn.begin():
-                    for periodo in periodos:
-                        # Extrair ano e mês
-                        ano = periodo.year
-                        mes = periodo.month
+                with engine.connect() as conn:
+                    with conn.begin():
+                        for periodo in periodos:
+                            # Extrair ano e mês
+                            ano = periodo.year
+                            mes = periodo.month
 
-                        # Query para contar registros antes de deletar
-                        count_query = text(
-                            f"""
-                            SELECT COUNT(*) 
-                            FROM {table_name}
-                            WHERE YEAR({date_column}) = :ano 
-                            AND MONTH({date_column}) = :mes
-                            AND data_carga < CAST(GETDATE() AS DATE)
-                        """
-                        )
-
-                        result = conn.execute(count_query, {"ano": ano, "mes": mes})
-                        count_before = result.scalar()
-
-                        if count_before > 0:
-                            # Query para deletar registros antigos do mesmo período
-                            delete_query = text(
+                            # Query para contar registros antes de deletar
+                            count_query = text(
                                 f"""
-                                DELETE FROM {table_name}
+                                SELECT COUNT(*) 
+                                FROM {table_name}
                                 WHERE YEAR({date_column}) = :ano 
                                 AND MONTH({date_column}) = :mes
                                 AND data_carga < CAST(GETDATE() AS DATE)
                             """
                             )
 
-                            result = conn.execute(
-                                delete_query, {"ano": ano, "mes": mes}
-                            )
-                            deleted = result.rowcount
-                            total_deleted += deleted
+                            result = conn.execute(count_query, {"ano": ano, "mes": mes})
+                            count_before = result.scalar()
 
-                            print(
-                                f"   🗑️ Período {ano}-{mes:02d}: {deleted} registros antigos removidos"
-                            )
+                            if count_before > 0:
+                                # Query para deletar registros antigos do mesmo período
+                                delete_query = text(
+                                    f"""
+                                    DELETE FROM {table_name}
+                                    WHERE YEAR({date_column}) = :ano 
+                                    AND MONTH({date_column}) = :mes
+                                    AND data_carga < CAST(GETDATE() AS DATE)
+                                """
+                                )
 
-            print(
-                f"   ✅ Limpeza concluída! Total removido: {total_deleted} registros\n"
-            )
+                                result = conn.execute(
+                                    delete_query, {"ano": ano, "mes": mes}
+                                )
+                                deleted = result.rowcount
+                                total_deleted += deleted
 
-            return {
-                "status": "success",
-                "periods_cleaned": [str(p) for p in periodos],
-                "total_deleted": total_deleted,
-            }
+                                print(
+                                    f"   🗑️ Período {ano}-{mes:02d}: {deleted} registros antigos removidos"
+                                )
+
+                print(
+                    f"   ✅ Limpeza concluída! Total removido: {total_deleted} registros\n"
+                )
+
+                return {
+                    "status": "success",
+                    "periods_cleaned": [str(p) for p in periodos],
+                    "total_deleted": total_deleted,
+                    "cleanup_type": "datetime"
+                }
 
         except Exception as e:
             print(f"❌ Erro na limpeza pós-carga: {str(e)}")

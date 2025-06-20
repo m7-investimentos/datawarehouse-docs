@@ -22,6 +22,9 @@ from processors.tabela import Tabela
 from utils.helpers import inserir_tabela_no_banco
 from config.database_config import LoadStrategy
 
+# Lista de processadores que buscam dados de APIs (não precisam de arquivo)
+PROCESSADORES_SEM_ARQUIVO = ['bc_cdi_historico']
+
 
 def descobrir_processadores():
     """
@@ -166,6 +169,40 @@ def processar_arquivo(file_info, processadores):
         return False
 
 
+def processar_apis(processadores):
+    """Processa dados de APIs que não dependem de arquivos."""
+    sucessos_api = 0
+    
+    for proc_name in PROCESSADORES_SEM_ARQUIVO:
+        if proc_name in processadores:
+            try:
+                print(f"\n🌐 Processando API: {proc_name}")
+                processador_func = processadores[proc_name]
+                tabela_processada = processador_func(None)  # Passa None como file_path
+                
+                if tabela_processada is None:
+                    print(f"   ℹ️ {proc_name}: Nenhum dado novo")
+                    continue
+                
+                config = obter_configuracoes_processador(proc_name)
+                
+                resultado = inserir_tabela_no_banco(
+                    tabela_processada,
+                    config["nome_tabela"],
+                    config["load_strategy"],
+                    config["batch_size"],
+                    config["pre_load_func"],
+                )
+                
+                print(f"   ✅ {proc_name}: {resultado['rows_inserted']} linhas inseridas")
+                sucessos_api += 1
+                
+            except Exception as e:
+                print(f"   ❌ Erro processando API {proc_name}: {e}")
+                
+    return sucessos_api
+
+
 def main():
     """Função principal - genérica e escalável."""
     inicio = datetime.now()
@@ -180,12 +217,18 @@ def main():
         if not processadores:
             print("ℹ️ Nenhum processador específico encontrado (usará genérico)")
 
+        # Processa dados de APIs primeiro
+        print("\n🌐 Processando dados de APIs...")
+        sucessos_api = processar_apis(processadores)
+        
         print("\n📥 Extraindo arquivos do S3...")
         extractor = S3Extractor("./temp")
         arquivos = extractor.download_all_files()
 
         if not arquivos:
-            print("ℹ️ Nenhum arquivo encontrado")
+            print("ℹ️ Nenhum arquivo encontrado no S3")
+            if sucessos_api == 0:
+                print("ℹ️ Nenhum dado processado nesta execução")
             return 0
 
         print(f"📁 {len(arquivos)} arquivos baixados")
@@ -218,7 +261,8 @@ def main():
         print("=" * 40)
         print(f"🔧 Processadores: {', '.join(processadores.keys()) or 'Genérico'}")
         print(f"⏱️ Duração: {duracao:.2f}s")
-        print(f"📁 Sucessos: {sucessos}")
+        print(f"🌐 APIs processadas: {sucessos_api}")
+        print(f"📁 Arquivos processados: {sucessos}")
         print(f"❌ Falhas: {falhas}")
         print("✅ Pipeline concluído!")
 

@@ -38,8 +38,11 @@ class S3Config:
     Gerencia credenciais, padrões de nomenclatura e estrutura do bucket.
     """
     
-    # Padrão de nomenclatura: nome_da_pasta_aaaa-mm-dd.xlsx
-    FILENAME_PATTERN = r"^(.+)_(\d{4}-\d{2}-\d{2})\.xlsx$"
+    # Padrões de nomenclatura:
+    # 1. nome_da_pasta_aaaa-mm-dd.xlsx
+    # 2. nome_da_pasta_acumulado.xlsx
+    FILENAME_PATTERN_DATE = r"^(.+)_(\d{4}-\d{2}-\d{2})\.xlsx$"
+    FILENAME_PATTERN_ACUMULADO = r"^(.+)_acumulado\.xlsx$"
     
     def __init__(self):
         self._load_environment_variables()
@@ -100,10 +103,11 @@ class S3Config:
     
     def parse_filename(self, filename: str) -> Optional[S3FileInfo]:
         """
-        Extrai informações do nome do arquivo seguindo o padrão estabelecido.
+        Extrai informações do nome do arquivo seguindo os padrões estabelecidos.
         
-        Padrão esperado: nome_da_pasta_aaaa-mm-dd.xlsx
-        Exemplo: vendas_2024-01-15.xlsx -> pasta: vendas, data: 2024-01-15
+        Padrões aceitos:
+        1. nome_da_pasta_aaaa-mm-dd.xlsx -> pasta: nome_da_pasta, data: aaaa-mm-dd
+        2. nome_da_pasta_acumulado.xlsx -> pasta: nome_da_pasta, data: "acumulado"
         
         Args:
             filename: Nome do arquivo
@@ -112,11 +116,12 @@ class S3Config:
             S3FileInfo se válido, None caso contrário
         """
         try:
-            match = re.match(self.FILENAME_PATTERN, filename)
+            # Primeiro tenta padrão com data
+            match_date = re.match(self.FILENAME_PATTERN_DATE, filename)
             
-            if match:
-                folder_name = match.group(1)
-                date = match.group(2)
+            if match_date:
+                folder_name = match_date.group(1)
+                date = match_date.group(2)
                 s3_key = f"{folder_name}/{filename}"
                 
                 return S3FileInfo(
@@ -125,8 +130,24 @@ class S3Config:
                     date=date,
                     s3_key=s3_key
                 )
-            else:
-                return None
+            
+            # Depois tenta padrão acumulado
+            match_acumulado = re.match(self.FILENAME_PATTERN_ACUMULADO, filename)
+            
+            if match_acumulado:
+                folder_name = match_acumulado.group(1)
+                date = "acumulado"  # Usa "acumulado" como indicador especial
+                s3_key = f"{folder_name}/{filename}"
+                
+                return S3FileInfo(
+                    filename=filename,
+                    folder_name=folder_name,
+                    date=date,
+                    s3_key=s3_key
+                )
+            
+            # Se não corresponde a nenhum padrão
+            return None
                 
         except Exception as e:
             raise S3ExtractionError(
@@ -215,6 +236,7 @@ class S3Config:
     def get_folder_files_pattern(self, folder_name: str) -> str:
         """
         Retorna padrão de arquivos esperados para uma pasta específica.
+        Inclui tanto arquivos com data quanto arquivos acumulados.
         
         Args:
             folder_name: Nome da pasta
@@ -222,7 +244,8 @@ class S3Config:
         Returns:
             Padrão regex para arquivos da pasta
         """
-        return rf"^{folder_name}_\d{{4}}-\d{{2}}-\d{{2}}\.xlsx$"
+        # Padrão que aceita tanto data quanto "acumulado"
+        return rf"^{folder_name}_(\d{{4}}-\d{{2}}-\d{{2}}|acumulado)\.xlsx$"
     
     def extract_date_from_filename(self, filename: str) -> Optional[str]:
         """

@@ -130,9 +130,28 @@ def processar_oi_habilitacao(file_path: str) -> Tabela:
     # Adiciona data de processamento
     tabela.add_processing_date()
 
-    # Adiciona data de referência se não existir ano_mes
-    if "ano_mes" not in tabela.df.columns:
-        tabela.add_reference_date("ano_mes")
+    # CORREÇÃO: Garantir que ano_mes permaneça como string no formato YYYYMM
+    if "ano_mes" in tabela.df.columns:
+        # Se a coluna já existe, garantir que está no formato string YYYYMM
+        tabela.df["ano_mes"] = tabela.df["ano_mes"].astype(str).str.strip()
+
+        # Validar formato (deve ter 6 dígitos)
+        invalid_mask = ~tabela.df["ano_mes"].str.match(r"^\d{6}$")
+        if invalid_mask.any():
+            print(
+                f"⚠️ Aviso: {invalid_mask.sum()} registros com ano_mes em formato inválido"
+            )
+            # Tentar corrigir formatos comuns
+            # Ex: 2025-06 -> 202506
+            tabela.df.loc[invalid_mask, "ano_mes"] = (
+                tabela.df.loc[invalid_mask, "ano_mes"]
+                .str.replace("-", "")
+                .str.replace("/", "")
+            )
+    else:
+        # Se não existir ano_mes, criar baseado na data atual no formato YYYYMM
+        current_date = datetime.now()
+        tabela.df["ano_mes"] = current_date.strftime("%Y%m")
 
     # Reordena colunas
     tabela.reorder_columns(COLUMN_ORDER)
@@ -140,9 +159,11 @@ def processar_oi_habilitacao(file_path: str) -> Tabela:
     return tabela
 
 
-# Registrar função de pós-processamento diretamente
-# Esta função será chamada automaticamente pelo loader após inserção bem-sucedida
-POST_LOAD_FUNCTION = Tabela.post_load_cleanup_by_period
+# Registrar função de pós-processamento
+# Usa um lambda para ajustar a ordem dos parâmetros
+POST_LOAD_FUNCTION = lambda engine, table_name, df: Tabela.post_load_cleanup_by_period(
+    df, table_name, engine, date_column="ano_mes"
+)
 
 
 if __name__ == "__main__":
@@ -163,14 +184,12 @@ if __name__ == "__main__":
 
         # Mostrar períodos únicos
         if "ano_mes" in tabela.df.columns:
-            try:
-                periodos = (
-                    pd.to_datetime(tabela.df["ano_mes"]).dt.to_period("M").unique()
-                )
-                print(f"\n📅 Períodos no arquivo: {[str(p) for p in periodos]}")
-            except:
-                print(
-                    f"\n📅 Valores únicos em ano_mes: {tabela.df['ano_mes'].unique()}"
-                )
+            periodos = tabela.df["ano_mes"].unique()
+            print(f"\n📅 Períodos no arquivo: {list(periodos)}")
+
+            # Validar formato
+            for periodo in periodos:
+                if not str(periodo).isdigit() or len(str(periodo)) != 6:
+                    print(f"   ⚠️ Período em formato inválido: {periodo}")
     else:
         print("Uso: python oi_habilitacao.py <caminho_do_arquivo>")

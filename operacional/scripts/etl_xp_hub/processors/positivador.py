@@ -8,6 +8,7 @@ from config.database_config import LoadStrategy
 from datetime import datetime
 import pandas as pd
 import numpy as np
+import os
 
 # Configurações específicas do processador
 NOME_TABELA = "xp_positivador"
@@ -100,6 +101,57 @@ NUMERIC_COLUMNS = [
 ]
 
 
+def add_custom_reference_date(tabela: Tabela, column_name: str = "data_ref") -> Tabela:
+    """
+    Adiciona coluna de data de referência customizada para positivador.
+    
+    - Se o arquivo termina com '_acumulado', mantém a coluna data_ref existente
+    - Caso contrário, extrai a data do nome do arquivo
+    
+    Args:
+        tabela: Objeto Tabela a ser processado
+        column_name: Nome da coluna de data de referência
+        
+    Returns:
+        Tabela com data de referência adicionada/processada
+    """
+    import os
+    from datetime import datetime
+    
+    # Extrai nome do arquivo
+    filename = os.path.basename(tabela.file_path)
+    filename_no_ext = os.path.splitext(filename)[0]
+    
+    # Verifica se é arquivo acumulado
+    if filename_no_ext.endswith("_acumulado"):
+        # Para arquivos acumulados, a coluna data_ref deve existir no arquivo
+        if column_name not in tabela.df.columns:
+            # Se não existir, cria com data de hoje como fallback
+            print(f"⚠️ Arquivo acumulado sem coluna {column_name}. Usando data atual.")
+            tabela.df[column_name] = datetime.today().strftime("%Y-%m-%d")
+        else:
+            # Formata a coluna data_ref existente para garantir formato correto
+            print(f"✅ Usando coluna {column_name} existente no arquivo acumulado.")
+            # Mantém a coluna data_ref original do arquivo, mas garante que está formatada
+            # Não renomeia, pois o mapeamento já foi aplicado antes
+            pass
+    else:
+        # Para arquivos com data no nome, extrai do nome do arquivo
+        try:
+            # Tenta extrair data do final do nome (formato YYYY-MM-DD)
+            date_str = filename_no_ext[-10:]  # Últimos 10 caracteres
+            # Valida se é uma data válida
+            pd.to_datetime(date_str, format="%Y-%m-%d")
+            tabela.df[column_name] = date_str
+            print(f"✅ Data de referência extraída do nome do arquivo: {date_str}")
+        except:
+            # Se falhar, usa data de hoje
+            tabela.df[column_name] = datetime.today().strftime("%Y-%m-%d")
+            print(f"⚠️ Não foi possível extrair data do nome. Usando data atual.")
+    
+    return tabela
+
+
 def processar_positivador(file_path: str) -> Tabela:
     """
     Processa arquivo de positivador do Hub XP.
@@ -110,17 +162,38 @@ def processar_positivador(file_path: str) -> Tabela:
     Returns:
         Objeto Tabela processado
     """
-    # Cria instância da tabela e aplica transformações encadeadas
+    # Cria instância da tabela
+    tabela = Tabela(file_path)
+    
+    # Verifica se é arquivo acumulado e tem coluna data_ref
+    filename = os.path.basename(file_path)
+    filename_no_ext = os.path.splitext(filename)[0]
+    is_acumulado = filename_no_ext.endswith("_acumulado")
+    
+    # Se for acumulado e tiver data_ref, adiciona ela na lista de colunas de data
+    date_columns_to_format = DATE_COLUMNS.copy()
+    if is_acumulado and "data_ref" in tabela.df.columns:
+        date_columns_to_format.append("data_ref")
+    
+    # Aplica transformações
     tabela = (
-        Tabela(file_path)
+        tabela
         .rename_columns(COLUMN_MAPPING)
         .normalize_text_columns(TEXT_COLUMNS)
-        .format_date_columns(DATE_COLUMNS)
+        .format_date_columns(date_columns_to_format)
         .format_numeric_columns(NUMERIC_COLUMNS)
         .convert_boolean_columns(BOOLEAN_COLUMNS)
-        .add_reference_date()
-        .add_processing_date()
     )
+    
+    # IMPORTANTE: Valida limites decimais para evitar overflow no SQL Server
+    # Especialmente importante para arquivos acumulados que podem ter valores muito grandes
+    tabela = tabela.validate_decimal_limits(NUMERIC_COLUMNS, precision=16, scale=4)
+    
+    # Aplica método customizado de data de referência
+    tabela = add_custom_reference_date(tabela)
+    
+    # Adiciona data de processamento
+    tabela = tabela.add_processing_date()
 
     # Reordena colunas (data_ref primeiro)
     column_order = ["data_ref"] + list(COLUMN_MAPPING.values()) + ["data_carga"]
