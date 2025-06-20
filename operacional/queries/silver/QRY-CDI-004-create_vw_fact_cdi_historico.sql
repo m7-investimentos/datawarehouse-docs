@@ -72,18 +72,29 @@ Ordenação padrão: data_ref ASC
 -- 4. DEPENDÊNCIAS
 -- ==============================================================================
 /*
-Tabelas/Views utilizadas:
-- bronze.bc_cdi_historico: Tabela fonte com taxas CDI diárias do Banco Central
+Tabelas de origem (INPUT):
+- [bronze].[bc_cdi_historico]: Tabela fonte com taxas CDI diárias do Banco Central
+  * Campos utilizados: data_ref, taxa_cdi
+  * Volume: ~7.000 registros históricos
+  * Atualização: Diária (dias úteis)
+  * Origem: API Banco Central ou importação manual
 
-Funções/Procedures chamadas:
-- LAG(): Para acessar valores anteriores no cálculo acumulado
+View de destino (OUTPUT):
+- Esta view não persiste dados, apenas calcula em tempo real
+- Consumida por: [silver].[prc_bronze_to_silver_fact_cdi_historico]
+- Materializada em: [silver].[fact_cdi_historico]
+
+Funções/Procedures utilizadas:
+- LAG(): Para acessar valores anteriores no cálculo acumulado (até 22 lags)
 - ROW_NUMBER(): Para numerar dias dentro do mês
 - COALESCE(): Tratamento de valores nulos
+- Window Functions: OVER (PARTITION BY) para cálculos por período
 
 Pré-requisitos:
-- Tabela bronze.bc_cdi_historico deve estar atualizada
-- Índice em bronze.bc_cdi_historico.data_ref para performance
-- Dados devem estar completos (sem gaps de dias úteis)
+- Tabela bronze.bc_cdi_historico deve existir e estar atualizada
+- Índice recomendado: bronze.bc_cdi_historico(data_ref) para performance
+- Dados devem estar completos (sem gaps significativos de dias úteis)
+- Máximo de 22 dias úteis por mês (limitação dos LAGs)
 */
 
 -- ==============================================================================
