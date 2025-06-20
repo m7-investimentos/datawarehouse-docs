@@ -20,7 +20,7 @@
     repo: business-documentation/estrategico/manuais/ANA
   - tipo: arquitetura
     ref: ARQ-DWH-001
-    repo: datawarehouse-docs/estrategico/arquiteturas
+    repo: datawarehouse-docs/estrategico/
 
 **aprovações**:
   - nome: bruno.chiaramonti@multisete.com
