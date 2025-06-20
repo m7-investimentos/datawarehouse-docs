@@ -69,6 +69,15 @@ Chave primária: data_ref
 Tabelas/Views utilizadas:
 - Nenhuma (criação inicial)
 
+Tabelas de origem:
+- Não aplicável - Dimensão calendário é gerada via script
+- Os dados são criados proceduralmente, não originados de tabelas bronze
+
+Processo de carga:
+- Script: QRY-CAL-002-load_silver_dim_calendario.sql
+- Geração: Via CTE recursivo com datas de 2023-01-01 a 2025-12-31
+- Feriados: Hardcoded no script de carga
+
 Funções/Procedures chamadas:
 - sys.sp_addextendedproperty: Adição de metadados descritivos
 
@@ -76,6 +85,7 @@ Pré-requisitos:
 - Schema silver deve existir
 - Permissões CREATE TABLE no schema silver
 - Permissões para adicionar extended properties
+- Executar script de carga após criação da tabela
 */
 
 -- ==============================================================================
