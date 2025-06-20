@@ -59,15 +59,40 @@ Share of Wallet:
 -- 4. DEPENDÊNCIAS
 -- ==============================================================================
 /*
-Tabelas utilizadas na carga:
+Schemas necessários:
+- silver: Schema onde a tabela será criada
+- bronze: Schema de origem dos dados
+
+Tabelas de origem (bronze) - utilizadas na carga:
 - [bronze].[xp_positivador]: Fonte principal de dados patrimoniais
+  * Campos utilizados: cod_xp, data_ref, aplicacao_financeira_declarada, net_em_M,
+                       status_cliente, cod_aai, data_nascimento, data_cadastro
+  * Volume: ~7M registros (histórico diário)
+  * Granularidade: Um registro por cliente por dia
+  
 - [bronze].[xp_rpa_clientes]: Dados de suitability e tipo investidor
-- [bronze].[xp_open_investment_habilitacao]: Dados de patrimônio Open Investment
-- [silver].[dim_clientes]: Dimensão de clientes (FK)
+  * Campos utilizados: cod_xp, fee_based, suitability, tipo_investidor, segmento, cpf_cnpj
+  * Volume: ~50.000 registros ativos
+  * Uso: Dados mais recentes por cliente
+  
+- [bronze].[xp_open_investment_extrato]: Dados de patrimônio Open Investment
+  * Campos utilizados: cod_conta, valor_bruto
+  * Volume: Variável
+  * Uso: Soma de patrimônio por cliente
+
+Tabelas relacionadas (silver):
+- [silver].[dim_clientes]: Dimensão de clientes (FK: cod_xp)
+- [silver].[vw_fact_cliente_perfil_historico]: View que realiza todos os cálculos
+
+Processo ETL:
+- View: [silver].[vw_fact_cliente_perfil_historico] - Realiza cálculos complexos
+- Procedure: [silver].[prc_load_fact_cliente_perfil_historico] - Materializa dados
+- Execução: Mensal (full load com TRUNCATE/INSERT)
 
 Pré-requisitos:
-- dim_clientes deve existir
-- Índices em bronze.xp_positivador: (cod_xp, data_ref)
+- dim_clientes deve existir e estar populada
+- Índices recomendados em bronze.xp_positivador: (cod_xp, data_ref)
+- Compressão de página recomendada para economia de espaço
 */
 
 -- ==============================================================================
