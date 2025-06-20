@@ -40,7 +40,7 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 - Definição e acompanhamento de metas mensais/trimestrais
 - Cálculo de performance individual e rankings
 - Suporte a indicadores normais e invertidos
-- Integração com PowerBI, LLMs e Machine Learning
+- Integração com PowerBI
 
 **Excluído:**
 - Cálculo de bonificações (consome dados do sistema)
