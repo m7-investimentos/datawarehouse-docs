@@ -3,14 +3,14 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 CREATE TABLE [silver].[fact_resgates](
-    [data_ref] [date] NOT NULL,
-    [conta_xp_cliente] [int] NOT NULL,
-    [cod_assessor] [varchar](50) NOT NULL,
-    [origem_resgate] [varchar](100) NOT NULL,
-    [resgate_bruto_xp] [decimal](18, 2) NOT NULL,
-    [tipo_transferencia] [varchar](100) NOT NULL,
-    [resgate_bruto_transferencia] [decimal](18, 2) NOT NULL,
-    [resgate_bruto_total] [decimal](18, 2) NOT NULL
+	[data_ref] [date] NOT NULL,
+	[conta_xp_cliente] [int] NOT NULL,
+	[cod_assessor] [varchar](50) NOT NULL,
+	[origem_resgate] [varchar](100) NOT NULL,
+	[resgate_bruto_xp] [decimal](18, 2) NOT NULL,
+	[tipo_transferencia] [varchar](100) NOT NULL,
+	[resgate_bruto_transferencia] [decimal](18, 2) NOT NULL,
+	[resgate_bruto_total] [decimal](18, 2) NOT NULL
 ) ON [PRIMARY]
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'data de referência do registro' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_resgates', @level2type=N'COLUMN',@level2name=N'data_ref'
@@ -21,7 +21,7 @@ EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'código do ass
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'origem do resgate (ted, prev, ota....)' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_resgates', @level2type=N'COLUMN',@level2name=N'origem_resgate'
 GO
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'valor dos resgates brutos' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_resgates', @level2type=N'COLUMN',@level2name=N'resgate_bruto_xp'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'valor dos resgates brutos xp' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_resgates', @level2type=N'COLUMN',@level2name=N'resgate_bruto_xp'
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'tipo de transferência de saida, nesse caso, todas sao saida' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_resgates', @level2type=N'COLUMN',@level2name=N'tipo_transferencia'
 GO

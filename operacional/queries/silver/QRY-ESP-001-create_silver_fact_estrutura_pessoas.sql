@@ -3,15 +3,15 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 CREATE TABLE [silver].[fact_estrutura_pessoas](
-    [crm_id] [varchar](20) NOT NULL,
-    [id_estrutura] [int] NOT NULL,
-    [data_entrada] [date] NOT NULL,
-    [data_saida] [date] NULL,
+	[crm_id] [varchar](20) NOT NULL,
+	[id_estrutura] [int] NOT NULL,
+	[data_entrada] [date] NOT NULL,
+	[data_saida] [date] NULL,
  CONSTRAINT [PK_fato_estrutura_pessoas] PRIMARY KEY CLUSTERED 
 (
-    [crm_id] ASC,
-    [id_estrutura] ASC,
-    [data_entrada] ASC
+	[crm_id] ASC,
+	[id_estrutura] ASC,
+	[data_entrada] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO

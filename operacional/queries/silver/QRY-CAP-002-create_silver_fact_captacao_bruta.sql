@@ -3,14 +3,14 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 CREATE TABLE [silver].[fact_captacao_bruta](
-    [data_ref] [date] NOT NULL,
-    [conta_xp_cliente] [int] NOT NULL,
-    [cod_assessor] [varchar](50) NOT NULL,
-    [origem_captacao] [varchar](100) NOT NULL,
-    [captacao_bruta_xp] [decimal](18, 2) NOT NULL,
-    [tipo_transferencia] [varchar](100) NOT NULL,
-    [captacao_bruta_transferencia] [decimal](18, 2) NOT NULL,
-    [captacao_bruta_total] [decimal](18, 2) NOT NULL
+	[data_ref] [date] NOT NULL,
+	[conta_xp_cliente] [int] NOT NULL,
+	[cod_assessor] [varchar](50) NOT NULL,
+	[origem_captacao] [varchar](100) NOT NULL,
+	[captacao_bruta_xp] [decimal](18, 2) NOT NULL,
+	[tipo_transferencia] [varchar](100) NOT NULL,
+	[captacao_bruta_transferencia] [decimal](18, 2) NOT NULL,
+	[captacao_bruta_total] [decimal](18, 2) NOT NULL
 ) ON [PRIMARY]
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'data de referência do registro' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_captacao_bruta', @level2type=N'COLUMN',@level2name=N'data_ref'
