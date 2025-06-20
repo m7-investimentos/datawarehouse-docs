@@ -1,14 +1,14 @@
 -- ==============================================================================
 -- QRY-PAT-001-create_gold_view_patrimonio_cliente
 -- ==============================================================================
--- Tipo: View
+-- Tipo: CREATE VIEW
 -- Versão: 1.2.0
--- Última atualização: 2025-01-16
--- Autor: bruno.chiaramonti@multisete.com
--- Revisor: bruno.chiaramonti@multisete.com
--- Tags: [patrimonio, cliente, mensal, análise, open-investment]
--- Status: desenvolvimento
--- Banco de Dados: SQL Server
+-- Última atualização: 2025-01-20
+-- Autor: [bruno.chiaramonti@multisete.com]
+-- Revisor: [equipe.dados@m7investimentos.com.br]
+-- Tags: [patrimonio, cliente, mensal, analise, open-investment, share-wallet]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
 -- Schema: gold
 -- ==============================================================================
 
@@ -494,5 +494,5 @@ Troubleshooting comum:
 4. Performance lenta: Verificar índices em fact_patrimonio e estatísticas atualizadas
 5. Múltiplos registros por mês: A view já trata isso pegando apenas o último dia com dados
 
-Contato para dúvidas: bruno.chiaramonti@multisete.com
+Contato para dúvidas: equipe-dados@m7investimentos.com.br
 */
