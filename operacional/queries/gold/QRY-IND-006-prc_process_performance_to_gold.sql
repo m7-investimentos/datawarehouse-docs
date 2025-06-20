@@ -2,7 +2,7 @@
 -- QRY-IND-006-prc_process_performance_to_gold
 -- ==============================================================================
 -- Tipo: Stored Procedure
--- Versão: 1.2.0
+-- Versão: 1.3.0
 -- Última atualização: 2025-01-20
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
@@ -29,6 +29,12 @@ Casos de uso:
 Frequência de execução: Mensal (após fechamento)
 Tempo médio de execução: 10-15 minutos para processamento completo
 Volume esperado: ~500 assessores × 20 indicadores = 10.000 cálculos
+
+Histórico de mudanças:
+- v1.3.0 (2025-01-20): Corrigido execução de fórmulas SQL para preservar estrutura original
+- v1.2.0 (2025-01-20): Adicionado mapeamento de código XP para CRM
+- v1.1.0 (2025-01-18): Adicionado suporte para SEQUENCE e melhorias de performance
+- v1.0.0 (2025-01-17): Versão inicial
 */
 
 -- ==============================================================================
@@ -48,21 +54,20 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.sequences WHERE name = 'ProcessingSequence')
 BEGIN
     CREATE SEQUENCE dbo.ProcessingSequence
-        AS INT
         START WITH 1
-        INCREMENT BY 1;
+        INCREMENT BY 1
+        MINVALUE 1
+        MAXVALUE 999999999
+        CYCLE;
 END
 GO
 
 -- Drop procedure se existir
-IF OBJECT_ID('gold.prc_process_performance_to_gold', 'P') IS NOT NULL
-    DROP PROCEDURE gold.prc_process_performance_to_gold;
+IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[gold].[prc_process_performance_to_gold]') AND type = N'P')
+    DROP PROCEDURE [gold].[prc_process_performance_to_gold]
 GO
 
--- ==============================================================================
--- 3. CREATE PROCEDURE
--- ==============================================================================
-CREATE PROCEDURE gold.prc_process_performance_to_gold
+CREATE PROCEDURE [gold].[prc_process_performance_to_gold]
     @period_start DATE = NULL,
     @period_end DATE = NULL,
     @crm_id VARCHAR(20) = NULL,
@@ -72,20 +77,22 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
     
-    -- Variáveis de controle
-    DECLARE @processing_id INT;
-    DECLARE @start_time DATETIME = GETDATE();
+    -- ==============================================================================
+    -- 3. VARIÁVEIS LOCAIS
+    -- ==============================================================================
     DECLARE @msg NVARCHAR(4000);
     DECLARE @error_msg NVARCHAR(4000);
     DECLARE @row_count INT;
-    DECLARE @success_count INT = 0;
     DECLARE @error_count INT = 0;
+    DECLARE @warning_count INT = 0;
+    DECLARE @start_time DATETIME = GETDATE();
+    DECLARE @processing_id INT;
     
-    -- Variáveis para loop de pessoas
+    -- Variáveis para cursor de pessoas
     DECLARE @current_crm_id VARCHAR(20);
     DECLARE @current_name VARCHAR(200);
     
-    -- Variáveis para loop de indicadores
+    -- Variáveis para cursor de indicadores
     DECLARE @indicator_id INT;
     DECLARE @indicator_code VARCHAR(50);
     DECLARE @indicator_name VARCHAR(200);
@@ -95,107 +102,101 @@ BEGIN
     DECLARE @aggregation_method VARCHAR(20);
     DECLARE @is_inverted BIT;
     DECLARE @indicator_weight DECIMAL(5,2);
-    
-    -- Variáveis para cálculo
-    DECLARE @sql_formula NVARCHAR(MAX);
-    DECLARE @realized_value DECIMAL(18,4);
     DECLARE @target_value DECIMAL(18,4);
     DECLARE @stretch_value DECIMAL(18,4);
     DECLARE @minimum_value DECIMAL(18,4);
+    
+    -- Variáveis para cálculo
+    DECLARE @realized_value DECIMAL(18,4);
     DECLARE @achievement_pct DECIMAL(5,2);
     DECLARE @weighted_achievement DECIMAL(5,2);
     DECLARE @achievement_status VARCHAR(20);
+    DECLARE @sql_formula NVARCHAR(MAX);
     DECLARE @calc_start_time DATETIME;
     DECLARE @calc_duration_ms INT;
     
+    -- Variável para total de entidades (faltava declarar)
+    DECLARE @total_entities INT;
+    
     BEGIN TRY
         -- ==============================================================================
-        -- 4. INICIALIZAÇÃO E VALIDAÇÕES
+        -- 4. VALIDAÇÕES E INICIALIZAÇÃO
         -- ==============================================================================
         
         -- Definir período padrão se não informado (mês anterior)
         IF @period_start IS NULL
         BEGIN
             SET @period_start = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
-            SET @period_end = DATEADD(DAY, -1, DATEADD(MONTH, 1, @period_start));
+            SET @period_end = EOMONTH(@period_start);
         END
         ELSE IF @period_end IS NULL
         BEGIN
             SET @period_end = EOMONTH(@period_start);
         END
         
+        -- Validar período
+        IF @period_start > @period_end
+        BEGIN
+            RAISERROR('Data início não pode ser maior que data fim', 16, 1);
+            RETURN;
+        END
+        
         IF @debug = 1
         BEGIN
-            SET @msg = 'Iniciando processamento Gold - Período: ' + 
-                       CONVERT(VARCHAR, @period_start, 103) + ' a ' + 
-                       CONVERT(VARCHAR, @period_end, 103);
+            SET @msg = '=== INICIANDO PROCESSAMENTO GOLD PERFORMANCE ===' + CHAR(13) + CHAR(10) +
+                       'Período: ' + CONVERT(VARCHAR, @period_start, 103) + ' a ' + CONVERT(VARCHAR, @period_end, 103);
+            IF @crm_id IS NOT NULL
+                SET @msg = @msg + CHAR(13) + CHAR(10) + 'Assessor específico: ' + @crm_id;
             RAISERROR(@msg, 0, 1) WITH NOWAIT;
         END
         
-        -- Criar registro de log
+        -- ==============================================================================
+        -- 5. CRIAR LOG DE PROCESSAMENTO
+        -- ==============================================================================
+        -- Obter próximo processing_id
+        SET @processing_id = NEXT VALUE FOR dbo.ProcessingSequence;
+        
         INSERT INTO gold.processing_log (
             processing_id,
             processing_type,
             period_start,
             period_end,
             entity_id,
+            start_time,
             status,
             executed_by
         )
         VALUES (
-            NEXT VALUE FOR dbo.ProcessingSequence,
+            @processing_id,
             CASE 
-                WHEN @crm_id IS NOT NULL THEN 'INCREMENTAL' 
-                ELSE 'FULL' 
+                WHEN @crm_id IS NOT NULL THEN 'INDIVIDUAL'
+                ELSE 'FULL'
             END,
             @period_start,
             @period_end,
             @crm_id,
+            @start_time,
             'RUNNING',
             SYSTEM_USER
         );
         
-        SET @processing_id = SCOPE_IDENTITY();
+        -- ==============================================================================
+        -- 6. IDENTIFICAR PESSOAS A PROCESSAR
+        -- ==============================================================================
         
-        -- ==============================================================================
-        -- 5. LIMPAR DADOS ANTERIORES DO PERÍODO (SE REPROCESSAMENTO)
-        -- ==============================================================================
-        IF @crm_id IS NULL
-        BEGIN
-            DELETE FROM gold.card_metas
-            WHERE period_start = @period_start
-              AND period_end = @period_end;
-            
-            SET @row_count = @@ROWCOUNT;
-            IF @row_count > 0 AND @debug = 1
-            BEGIN
-                SET @msg = 'Removidos ' + CAST(@row_count AS VARCHAR) + ' registros anteriores';
-                RAISERROR(@msg, 0, 1) WITH NOWAIT;
-            END
-        END
-        ELSE
-        BEGIN
-            DELETE FROM gold.card_metas
-            WHERE period_start = @period_start
-              AND period_end = @period_end
-              AND entity_id = @crm_id;
-        END
-        
-        -- ==============================================================================
-        -- 6. CRIAR TABELA TEMPORÁRIA COM PESSOAS A PROCESSAR
-        -- ==============================================================================
+        -- Criar tabela temporária de pessoas
         CREATE TABLE #pessoas_processar (
-            codigo_assessor_crm VARCHAR(20) NOT NULL PRIMARY KEY,
+            codigo_assessor_crm VARCHAR(20) NOT NULL,
             nome_pessoa VARCHAR(200) NULL,
-            processado BIT NOT NULL DEFAULT 0
+            processado BIT DEFAULT 0,
+            erro_msg VARCHAR(MAX) NULL
         );
         
-        -- Popular com assessores que têm indicadores ativos no período
-        -- Faz mapeamento de código XP para código CRM real
+        -- Popular com assessores ativos que têm assignments no período
         INSERT INTO #pessoas_processar (codigo_assessor_crm, nome_pessoa)
         SELECT DISTINCT 
-            COALESCE(p_crm.crm_id, a.codigo_assessor_crm) as codigo_assessor_crm,
-            COALESCE(p_crm.nome_pessoa, p_xp.nome_pessoa) as nome_pessoa
+            COALESCE(p_xp.crm_id, a.codigo_assessor_crm) as codigo_assessor_crm,
+            COALESCE(p_xp.nome_pessoa, p_crm.nome_pessoa, 'Nome não encontrado') as nome_pessoa
         FROM silver.performance_assignments a
         -- Primeiro tenta encontrar pelo CRM direto
         LEFT JOIN silver.dim_pessoas p_xp ON a.codigo_assessor_crm = p_xp.crm_id
@@ -219,6 +220,9 @@ BEGIN
             SET @msg = 'Nenhum assessor encontrado para processar no período';
             RAISERROR(@msg, 16, 1);
         END
+        
+        -- Guardar total de entidades para usar no final
+        SET @total_entities = @row_count;
         
         UPDATE gold.processing_log
         SET total_entities = @row_count
@@ -298,79 +302,84 @@ BEGIN
                     COALESCE(t.target_value, t.stretch_target, t.minimum_target) as target_value,
                     t.stretch_target,
                     t.minimum_target
-                FROM silver.performance_assignments a
-                INNER JOIN silver.performance_indicators i ON a.indicator_id = i.indicator_id
-                LEFT JOIN silver.performance_targets t ON 
-                    t.codigo_assessor_crm = a.codigo_assessor_crm AND
-                    t.indicator_id = a.indicator_id AND
-                    t.period_start = @period_start AND
-                    t.is_active = 1
-                WHERE (a.codigo_assessor_crm = @current_crm_id 
-                       OR a.codigo_assessor_crm = @current_xp_code)
+                FROM silver.performance_indicators i
+                INNER JOIN silver.performance_assignments a
+                    ON i.indicator_id = a.indicator_id
+                LEFT JOIN silver.performance_targets t
+                    ON a.codigo_assessor_crm = t.codigo_assessor_crm
+                    AND i.indicator_id = t.indicator_id
+                    AND t.period_start = @period_start
+                    AND t.is_active = 1
+                WHERE a.codigo_assessor_crm = @current_crm_id
                   AND a.is_active = 1
                   AND i.is_active = 1
-                  AND @period_start >= a.valid_from;
+                  AND @period_start >= a.valid_from
+                  AND (a.codigo_assessor_crm = @current_crm_id 
+                       OR a.codigo_assessor_crm = @current_xp_code);
+                
+                SET @row_count = @@ROWCOUNT;
+                
+                IF @debug = 1
+                BEGIN
+                    SET @msg = '  - Indicadores ativos: ' + CAST(@row_count AS VARCHAR);
+                    RAISERROR(@msg, 0, 1) WITH NOWAIT;
+                END
+                
+                -- Limpar dados anteriores do período/pessoa
+                DELETE FROM gold.card_metas
+                WHERE entity_id = @current_crm_id
+                  AND period_start = @period_start;
                 
                 -- ==============================================================================
                 -- 9. LOOP DE INDICADORES - CALCULAR CADA UM
                 -- ==============================================================================
-                DECLARE indicator_cursor CURSOR FOR
+                DECLARE indicador_cursor CURSOR FOR
                 SELECT 
-                    indicator_id,
-                    indicator_code,
-                    indicator_name,
-                    indicator_type,
-                    indicator_category,
-                    formula,
-                    aggregation_method,
-                    is_inverted,
-                    indicator_weight,
-                    target_value,
-                    stretch_value,
-                    minimum_value
+                    indicator_id, indicator_code, indicator_name,
+                    indicator_type, indicator_category,
+                    formula, aggregation_method, is_inverted,
+                    indicator_weight, target_value, stretch_value, minimum_value
                 FROM #indicadores_pessoa
-                ORDER BY indicator_weight DESC, indicator_code;
+                ORDER BY indicator_type DESC, indicator_code;
                 
-                OPEN indicator_cursor;
-                FETCH NEXT FROM indicator_cursor INTO 
-                    @indicator_id, @indicator_code, @indicator_name, @indicator_type,
-                    @indicator_category, @formula, @aggregation_method, @is_inverted,
+                OPEN indicador_cursor;
+                FETCH NEXT FROM indicador_cursor INTO 
+                    @indicator_id, @indicator_code, @indicator_name,
+                    @indicator_type, @indicator_category,
+                    @formula, @aggregation_method, @is_inverted,
                     @indicator_weight, @target_value, @stretch_value, @minimum_value;
                 
                 WHILE @@FETCH_STATUS = 0
                 BEGIN
                     BEGIN TRY
-                        SET @calc_start_time = GETDATE();
+                        -- Reset variáveis de cálculo
                         SET @realized_value = NULL;
                         SET @achievement_pct = NULL;
                         SET @weighted_achievement = NULL;
                         SET @achievement_status = NULL;
                         SET @error_msg = NULL;
+                        SET @calc_start_time = GETDATE();
                         
                         -- ==============================================================================
                         -- 10. EXECUTAR FÓRMULA SQL DINÂMICA
                         -- ==============================================================================
                         IF @formula IS NOT NULL AND LEN(@formula) > 0
                         BEGIN
-                            -- Construir SQL dinâmico com parâmetros
-                            SET @sql_formula = N'
-                            SELECT @result = ' + @formula + N'
-                            FROM (SELECT 1 AS dummy) AS base
-                            WHERE EXISTS (
-                                SELECT 1 
-                                WHERE @codigo_assessor_crm = @codigo_assessor_crm
-                                  AND @period_start = @period_start
-                                  AND @period_end = @period_end
-                            )';
+                            -- v1.3.0: Executar fórmula diretamente sem adicionar estrutura extra
+                            -- A fórmula já deve ser uma query completa que retorna um único valor
+                            SET @sql_formula = N'SELECT @result = (' + @formula + ')';
                             
                             -- Substituir placeholders comuns
                             SET @sql_formula = REPLACE(@sql_formula, '@entity_id', '@codigo_assessor_crm');
-                            SET @sql_formula = REPLACE(@sql_formula, '{{period_start}}', 'CAST(@period_start AS DATE)');
-                            SET @sql_formula = REPLACE(@sql_formula, '{{period_end}}', 'CAST(@period_end AS DATE)');
+                            SET @sql_formula = REPLACE(@sql_formula, '{{period_start}}', '@period_start');
+                            SET @sql_formula = REPLACE(@sql_formula, '{{period_end}}', '@period_end');
                             
                             IF @debug = 1
                             BEGIN
                                 SET @msg = '  - Executando fórmula para ' + @indicator_code;
+                                RAISERROR(@msg, 0, 1) WITH NOWAIT;
+                                -- Mostrar fórmula em debug
+                                SET @msg = '    SQL: ' + LEFT(@sql_formula, 500);
                                 RAISERROR(@msg, 0, 1) WITH NOWAIT;
                             END
                             
@@ -387,6 +396,12 @@ BEGIN
                             BEGIN CATCH
                                 SET @error_msg = 'Erro na fórmula: ' + ERROR_MESSAGE();
                                 SET @realized_value = NULL;
+                                
+                                IF @debug = 1
+                                BEGIN
+                                    SET @msg = '    ERRO: ' + @error_msg;
+                                    RAISERROR(@msg, 0, 1) WITH NOWAIT;
+                                END
                             END CATCH
                         END
                         
@@ -452,16 +467,27 @@ BEGIN
                             has_error,
                             calculation_formula,
                             calculation_method,
+                            data_source,
+                            processing_date,
                             processing_id,
                             processing_duration_ms,
-                            processing_notes
+                            processing_notes,
+                            created_date,
+                            created_by
                         )
                         VALUES (
-                            @period_start, @period_end,
-                            'ASSESSOR', @current_crm_id,
-                            'INDICATOR', @indicator_code, @indicator_name,
-                            @indicator_type, @indicator_category,
-                            @target_value, @stretch_value, @minimum_value,
+                            @period_start,
+                            @period_end,
+                            'ASSESSOR',
+                            @current_crm_id,
+                            'INDICATOR',
+                            @indicator_code,
+                            @indicator_name,
+                            @indicator_type,
+                            @indicator_category,
+                            @target_value,
+                            @stretch_value,
+                            @minimum_value,
                             @realized_value,
                             @achievement_pct,
                             @indicator_weight,
@@ -472,52 +498,39 @@ BEGIN
                             CASE WHEN @error_msg IS NOT NULL THEN 1 ELSE 0 END,
                             @formula,
                             @aggregation_method,
+                            'silver',
+                            GETDATE(),
                             @processing_id,
                             @calc_duration_ms,
-                            @error_msg
+                            @error_msg,
+                            GETDATE(),
+                            SYSTEM_USER
                         );
                         
-                        SET @success_count = @success_count + 1;
-                        
+                        IF @error_msg IS NOT NULL
+                            SET @error_count = @error_count + 1;
+                            
                     END TRY
                     BEGIN CATCH
-                        -- Log erro do indicador
+                        SET @error_msg = ERROR_MESSAGE();
                         SET @error_count = @error_count + 1;
-                        SET @error_msg = 'Erro no indicador ' + @indicator_code + ': ' + ERROR_MESSAGE();
                         
-                        -- Inserir registro de erro
-                        INSERT INTO gold.card_metas (
-                            period_start, period_end,
-                            entity_type, entity_id,
-                            attribute_type, attribute_code, attribute_name,
-                            indicator_type, indicator_category,
-                            target_value,
-                            indicator_weight,
-                            has_error,
-                            processing_id,
-                            processing_notes
-                        )
-                        VALUES (
-                            @period_start, @period_end,
-                            'ASSESSOR', @current_crm_id,
-                            'INDICATOR', @indicator_code, @indicator_name,
-                            @indicator_type, @indicator_category,
-                            @target_value,
-                            @indicator_weight,
-                            1,
-                            @processing_id,
-                            @error_msg
-                        );
+                        IF @debug = 1
+                        BEGIN
+                            SET @msg = '  ERRO no indicador ' + @indicator_code + ': ' + @error_msg;
+                            RAISERROR(@msg, 0, 1) WITH NOWAIT;
+                        END
                     END CATCH
                     
-                    FETCH NEXT FROM indicator_cursor INTO 
-                        @indicator_id, @indicator_code, @indicator_name, @indicator_type,
-                        @indicator_category, @formula, @aggregation_method, @is_inverted,
+                    FETCH NEXT FROM indicador_cursor INTO 
+                        @indicator_id, @indicator_code, @indicator_name,
+                        @indicator_type, @indicator_category,
+                        @formula, @aggregation_method, @is_inverted,
                         @indicator_weight, @target_value, @stretch_value, @minimum_value;
                 END
                 
-                CLOSE indicator_cursor;
-                DEALLOCATE indicator_cursor;
+                CLOSE indicador_cursor;
+                DEALLOCATE indicador_cursor;
                 
                 -- Limpar tabela temporária
                 DROP TABLE #indicadores_pessoa;
@@ -529,15 +542,21 @@ BEGIN
                 
             END TRY
             BEGIN CATCH
-                -- Log erro da pessoa
-                SET @error_msg = 'Erro ao processar ' + @current_crm_id + ': ' + ERROR_MESSAGE();
+                SET @error_msg = ERROR_MESSAGE();
+                SET @error_count = @error_count + 1;
+                
+                UPDATE #pessoas_processar
+                SET processado = 1,
+                    erro_msg = @error_msg
+                WHERE codigo_assessor_crm = @current_crm_id;
                 
                 IF @debug = 1
                 BEGIN
-                    RAISERROR(@error_msg, 0, 1) WITH NOWAIT;
+                    SET @msg = 'ERRO ao processar assessor ' + @current_crm_id + ': ' + @error_msg;
+                    RAISERROR(@msg, 0, 1) WITH NOWAIT;
                 END
                 
-                -- Continuar com próxima pessoa
+                -- Limpar objetos se existirem
                 IF OBJECT_ID('tempdb..#indicadores_pessoa') IS NOT NULL
                     DROP TABLE #indicadores_pessoa;
             END CATCH
@@ -549,14 +568,19 @@ BEGIN
         DEALLOCATE pessoa_cursor;
         
         -- ==============================================================================
-        -- 13. FINALIZAÇÃO E ESTATÍSTICAS
+        -- 13. FINALIZAR PROCESSAMENTO
         -- ==============================================================================
         
         -- Contar totais
-        DECLARE @total_calcs INT, @total_indicators INT;
+        DECLARE @total_calculations INT;
+        DECLARE @successful_calculations INT;
+        DECLARE @failed_calculations INT;
+        DECLARE @total_indicators INT;
         
         SELECT 
-            @total_calcs = COUNT(*),
+            @total_calculations = COUNT(*),
+            @successful_calculations = SUM(CASE WHEN is_calculated = 1 THEN 1 ELSE 0 END),
+            @failed_calculations = SUM(CASE WHEN has_error = 1 THEN 1 ELSE 0 END),
             @total_indicators = COUNT(DISTINCT attribute_code)
         FROM gold.card_metas
         WHERE processing_id = @processing_id;
@@ -567,52 +591,72 @@ BEGIN
             end_time = GETDATE(),
             duration_seconds = DATEDIFF(SECOND, @start_time, GETDATE()),
             total_indicators = @total_indicators,
-            total_calculations = @total_calcs,
-            successful_calculations = @success_count,
-            failed_calculations = @error_count,
+            total_calculations = @total_calculations,
+            successful_calculations = @successful_calculations,
+            failed_calculations = @failed_calculations,
             status = CASE 
-                WHEN @error_count = 0 THEN 'SUCCESS'
-                WHEN @error_count < @success_count THEN 'WARNING'
-                ELSE 'ERROR'
-            END,
-            execution_notes = 'Processamento concluído. Sucessos: ' + CAST(@success_count AS VARCHAR) + 
-                            ', Erros: ' + CAST(@error_count AS VARCHAR)
+                        WHEN @error_count = 0 THEN 'SUCCESS'
+                        WHEN @error_count < (@total_calculations * 0.1) THEN 'WARNING'
+                        ELSE 'ERROR'
+                     END,
+            error_message = CASE 
+                              WHEN @error_count > 0 
+                              THEN CAST(@error_count AS VARCHAR) + ' erros durante processamento'
+                              ELSE NULL
+                            END,
+            warning_messages = CASE 
+                                 WHEN @warning_count > 0 
+                                 THEN CAST(@warning_count AS VARCHAR) + ' avisos durante processamento'
+                                 ELSE NULL
+                               END,
+            execution_notes = 'Processamento concluído. Assessores: ' + CAST(@total_entities AS VARCHAR) + 
+                            ', Indicadores: ' + CAST(@total_indicators AS VARCHAR) +
+                            ', Cálculos: ' + CAST(@total_calculations AS VARCHAR)
         WHERE log_id = @processing_id;
         
-        -- Limpar temporária
+        -- Limpar tabela temporária
         DROP TABLE #pessoas_processar;
         
         IF @debug = 1
         BEGIN
-            SET @msg = 'Processamento concluído! Total: ' + CAST(@total_calcs AS VARCHAR) + 
-                      ' cálculos, Sucessos: ' + CAST(@success_count AS VARCHAR) + 
-                      ', Erros: ' + CAST(@error_count AS VARCHAR);
+            SET @msg = CHAR(13) + CHAR(10) + '=== PROCESSAMENTO CONCLUÍDO ===' + CHAR(13) + CHAR(10) +
+                       'Total de cálculos: ' + CAST(@total_calculations AS VARCHAR) + CHAR(13) + CHAR(10) +
+                       'Sucesso: ' + CAST(@successful_calculations AS VARCHAR) + CHAR(13) + CHAR(10) +
+                       'Falhas: ' + CAST(@failed_calculations AS VARCHAR) + CHAR(13) + CHAR(10) +
+                       'Tempo total: ' + CAST(DATEDIFF(SECOND, @start_time, GETDATE()) AS VARCHAR) + ' segundos';
             RAISERROR(@msg, 0, 1) WITH NOWAIT;
+        END
+        
+        -- Executar validação básica
+        IF @error_count = 0
+        BEGIN
+            EXEC gold.prc_validate_processing 
+                @period_start = @period_start,
+                @validation_type = 'BASIC',
+                @fix_issues = 0,
+                @debug = @debug;
         END
         
     END TRY
     BEGIN CATCH
-        -- Tratamento de erro geral
+        -- Capturar erro
         SET @error_msg = ERROR_MESSAGE();
         
-        -- Atualizar log com erro
-        IF @processing_id IS NOT NULL
-        BEGIN
-            UPDATE gold.processing_log
-            SET 
-                end_time = GETDATE(),
-                duration_seconds = DATEDIFF(SECOND, @start_time, GETDATE()),
-                status = 'ERROR',
-                error_message = @error_msg
-            WHERE log_id = @processing_id;
-        END
+        -- Atualizar log como erro
+        UPDATE gold.processing_log
+        SET 
+            end_time = GETDATE(),
+            duration_seconds = DATEDIFF(SECOND, @start_time, GETDATE()),
+            status = 'ERROR',
+            error_message = @error_msg
+        WHERE log_id = @processing_id;
         
-        -- Limpar objetos temporários
+        -- Limpar objetos temporários se existirem
         IF OBJECT_ID('tempdb..#pessoas_processar') IS NOT NULL
             DROP TABLE #pessoas_processar;
         IF OBJECT_ID('tempdb..#indicadores_pessoa') IS NOT NULL
             DROP TABLE #indicadores_pessoa;
-        
+            
         -- Re-lançar erro
         THROW;
     END CATCH
@@ -620,82 +664,43 @@ END
 GO
 
 -- ==============================================================================
--- 14. PERMISSÕES
+-- 14. HISTÓRICO DE MUDANÇAS
 -- ==============================================================================
--- Conceder permissão para roles customizados (se existirem)
-IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'db_executor')
-BEGIN
-    GRANT EXECUTE ON gold.prc_process_performance_to_gold TO db_executor;
-END
-
--- Conceder permissão para usuários de Power BI (se existirem)
-IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'PowerBI_Users')
-BEGIN
-    GRANT EXECUTE ON gold.prc_process_performance_to_gold TO PowerBI_Users;
-END
-
--- Nota: db_datawriter e db_datareader são roles built-in e não podem receber GRANTs diretos
-GO
+/*
+Versão  | Data       | Autor                   | Descrição
+--------|------------|-------------------------|--------------------------------------------
+1.0.0   | 2025-01-17 | bruno.chiaramonti      | Criação inicial
+1.1.0   | 2025-01-18 | bruno.chiaramonti      | Adicionado suporte para SEQUENCE
+1.2.0   | 2025-01-20 | bruno.chiaramonti      | Adicionado mapeamento XP para CRM
+1.3.0   | 2025-01-20 | bruno.chiaramonti      | Corrigido execução de fórmulas SQL dinâmicas
+*/
 
 -- ==============================================================================
 -- 15. EXEMPLOS DE USO
 -- ==============================================================================
 /*
--- Processar mês anterior completo (uso padrão)
+-- Processar mês anterior (padrão)
 EXEC gold.prc_process_performance_to_gold;
 
 -- Processar período específico
 EXEC gold.prc_process_performance_to_gold 
     @period_start = '2025-01-01',
-    @period_end = '2025-01-31';
-
--- Processar assessor específico com debug
-EXEC gold.prc_process_performance_to_gold 
-    @period_start = '2025-01-01',
     @period_end = '2025-01-31',
-    @crm_id = 'AAI001',
     @debug = 1;
 
--- Verificar log de execução
-SELECT TOP 10 * FROM gold.processing_log ORDER BY log_id DESC;
+-- Processar assessor específico
+EXEC gold.prc_process_performance_to_gold 
+    @period_start = '2025-01-01',
+    @crm_id = '80',
+    @debug = 1;
 
--- Verificar resultados
-SELECT * FROM gold.card_metas 
-WHERE period_start = '2025-01-01' 
-  AND entity_id = 'AAI001'
-ORDER BY indicator_weight DESC;
+-- Verificar último processamento
+SELECT TOP 1 * FROM gold.processing_log 
+ORDER BY log_id DESC;
+
+-- Verificar resultados de um assessor
+SELECT * FROM gold.card_metas
+WHERE entity_id = '80'
+  AND period_start = '2025-01-01'
+ORDER BY indicator_type DESC, attribute_code;
 */
-
--- ==============================================================================
--- 16. HISTÓRICO DE MUDANÇAS
--- ==============================================================================
-/*
-Versão  | Data       | Autor                  | Descrição
---------|------------|------------------------|--------------------------------------------
-1.0.0   | 2025-01-18 | bruno.chiaramonti     | Criação inicial da procedure
-1.0.1   | 2025-01-20 | bruno.chiaramonti     | Correção: JOIN com dim_pessoas usando crm_id
-1.1.0   | 2025-01-20 | bruno.chiaramonti     | Correção: COALESCE para target_value NULL
-1.2.0   | 2025-01-20 | bruno.chiaramonti     | Mapeamento código XP para CRM real no entity_id
-*/
-
--- ==============================================================================
--- 17. NOTAS E OBSERVAÇÕES
--- ==============================================================================
-/*
-Notas importantes:
-- Executa fórmulas SQL dinâmicas com segurança usando sp_executesql
-- Processa cada pessoa em transação separada (falha de uma não impede outras)
-- Log detalhado para troubleshooting
-- Suporta reprocessamento (deleta dados anteriores do período)
-- Performance adequada para volume esperado
-
-Segurança:
-- Fórmulas são executadas com permissões mínimas
-- Parâmetros sempre usando binding para evitar SQL injection
-- Validação de objetos nas fórmulas deve ser feita previamente
-
-Contato para dúvidas: arquitetura.dados@m7investimentos.com.br
-*/
-
-PRINT 'Procedure gold.prc_process_performance_to_gold criada com sucesso!';
-GO
