@@ -1,7 +1,95 @@
+-- ==============================================================================
+-- QRY-IEA-007-create_vw_indice_esforco_assessor
+-- ==============================================================================
+-- Tipo: CREATE VIEW
+-- Versão: 1.0.0
+-- Última atualização: 2025-01-20
+-- Autor: [equipe.dados@m7investimentos.com.br]
+-- Revisor: [revisor@m7investimentos.com.br]
+-- Tags: [indice_esforco, assessor, consolidacao, gold]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
+-- Schema: gold
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: View que consolida o Índice de Esforço do Assessor (IEA) a partir dos
+dados da silver, garantindo que apenas o registro mais recente por assessor/mês
+seja considerado. Calcula médias acumuladas para diferentes períodos.
+
+Casos de uso:
+- Base para tabela materializada gold.indice_esforco_assessor
+- Consultas ad-hoc para análise de tendências do IEA
+- Validação de cálculos antes da materialização
+- Fonte para dashboards em tempo real de performance
+
+Frequência de consulta: Várias vezes ao dia
+Tempo médio de execução: 30-60 segundos
+Volume de dados: ~24.000 registros
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Não aplicável - View processa todos os dados disponíveis
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+| Coluna                                        | Tipo          | Descrição                                     |
+|-----------------------------------------------|---------------|-----------------------------------------------|
+| ano                                           | INT           | Ano de referência                            |
+| ano_mes                                       | INT           | Período no formato AAAAMM                    |
+| mes                                           | INT           | Mês de referência (1-12)                    |
+| nome_mes                                      | VARCHAR(20)   | Nome do mês em inglês                       |
+| semestre                                      | VARCHAR(2)    | Semestre (S1-S2)                              |
+| trimestre                                     | VARCHAR(2)    | Trimestre (Q1-Q4)                             |
+| cod_assessor                                  | VARCHAR(20)   | Código do assessor                           |
+| crm_id_assessor                               | VARCHAR(20)   | ID do assessor no CRM                        |
+| nome_assessor                                 | VARCHAR(200)  | Nome completo do assessor                    |
+| nivel_assessor                                | VARCHAR(50)   | Nível hierárquico                            |
+| estrutura_id                                  | INT           | ID da estrutura organizacional               |
+| estrutura_nome                                | VARCHAR(100)  | Nome da estrutura                            |
+| esforco_prospeccao                            | DECIMAL(18,8) | Índice de esforço em prospecção              |
+| esforco_relacionamento                        | DECIMAL(18,8) | Índice de esforço em relacionamento          |
+| indice_esforco_assessor                       | DECIMAL(18,8) | IEA do mês                                   |
+| indice_esforco_assessor_[periodo]             | DECIMAL(18,8) | IEA médio acumulado por período             |
+| [métricas de prospecção e relacionamento]     | Vários        | Indicadores detalhados                       |
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas/Views utilizadas:
+- silver.fact_indice_esforco_assessor: Fatos do IEA com histórico de cargas
+- silver.dim_pessoas: Cadastro de pessoas (assessores)
+- silver.fact_estrutura_pessoas: Histórico de alocação em estruturas
+- silver.dim_estruturas: Cadastro de estruturas organizacionais
+- silver.dim_calendario: Dimensão de datas
+
+Pré-requisitos:
+- Dados atualizados nas tabelas silver
+- Índices adequados para performance dos JOINs
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
+-- ==============================================================================
+-- 6. CRIAÇÃO DA VIEW COM CTEs
+-- ==============================================================================
 -- View para a tabela gold.indice_esforco_assessor
 -- Esta view busca dados da silver e calcula corretamente os acumulados
 -- Considera apenas o registro mais recente por assessor/mês baseado na data_carga

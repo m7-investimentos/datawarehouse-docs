@@ -1,7 +1,78 @@
+-- ==============================================================================
+-- QRY-IEA-005-create_gold_indice_esforco_assessor
+-- ==============================================================================
+-- Tipo: CREATE TABLE
+-- Versão: 1.0.0
+-- Última atualização: 2025-01-20
+-- Autor: [equipe.dados@m7investimentos.com.br]
+-- Revisor: [revisor@m7investimentos.com.br]
+-- Tags: [indice_esforco, assessor, performance, kpi, gold]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
+-- Schema: gold
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: Cria a tabela física para armazenar o Índice de Esforço do Assessor (IEA)
+e suas métricas componentes. O IEA é um indicador composto que mede o desempenho 
+comercial dos assessores em duas dimensões: prospecção e relacionamento.
+
+Casos de uso:
+- Dashboard executivo de performance comercial
+- Ranking e classificação de assessores por esforço
+- Análise de correlação entre esforço e resultados
+- Base para cálculo de remuneração variável
+- Identificação de gaps de performance
+
+Frequência de atualização: Diária (via procedure prc_gold_indice_esforco_assessor)
+Volume esperado de linhas: ~2.000 registros/mês (1 por assessor ativo)
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Não aplicável - Script DDL de criação de tabela
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+Tabela criada: gold.indice_esforco_assessor
+
+Chave lógica: ano_mes + cod_assessor (sem PK física definida)
+
+Particionamento: Não aplicado
+Índices: Recomenda-se criar índice clustered em (ano_mes, cod_assessor)
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas/Views utilizadas:
+- gold.vw_indice_esforco_assessor: View que consolida os dados (populada via procedure)
+
+Pré-requisitos:
+- Schema gold deve existir
+- Permissões CREATE TABLE no schema gold
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
+-- ==============================================================================
+-- 6. CRIAÇÃO DA TABELA
+-- ==============================================================================
 CREATE TABLE [gold].[indice_esforco_assessor](
 	[ano_mes] [int] NOT NULL,
 	[ano] [int] NOT NULL,
@@ -102,3 +173,55 @@ EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Data de carga 
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Tabela agregada mensal com métricas do Índice de Esforço do Assessor (IEA). Consolida indicadores de prospecção e relacionamento para medir o desempenho comercial dos assessores. Inclui métricas acumuladas em diferentes janelas temporais. Granularidade: uma linha por assessor por mês.' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'indice_esforco_assessor'
 GO
+
+-- ==============================================================================
+-- 7. DEFAULTS E CONSTRAINTS  
+-- ==============================================================================
+-- A tabela não possui chave primária definida, o que pode impactar performance.
+-- Recomenda-se adicionar:
+-- ALTER TABLE [gold].[indice_esforco_assessor] 
+-- ADD CONSTRAINT PK_indice_esforco_assessor PRIMARY KEY CLUSTERED (ano_mes, cod_assessor)
+--
+-- O único default definido é para data_carga = GETDATE()
+
+-- ==============================================================================
+-- 8. EXTENDED PROPERTIES (DOCUMENTAÇÃO)
+-- ==============================================================================
+-- Todas as colunas possuem extended properties detalhadas descrevendo:
+-- - Propósito e conteúdo da coluna
+-- - Formato e valores esperados
+-- - Relação com outras colunas/tabelas
+-- - Regras de negócio aplicadas
+
+-- ==============================================================================
+-- 9. HISTÓRICO DE MUDANÇAS
+-- ==============================================================================
+/*
+Versão  | Data       | Autor           | Descrição
+--------|------------|-----------------|--------------------------------------------
+1.0.0   | 2025-01-20 | equipe.dados   | Criação inicial da tabela
+
+*/
+
+-- ==============================================================================
+-- 10. NOTAS E OBSERVAÇÕES
+-- ==============================================================================
+/*
+Notas importantes:
+- Tabela não possui PK física definida - considerar adicionar para melhor performance
+- IEA varia de 0 a 1, onde 1 representa esforço máximo
+- Métricas de atingimento também variam de 0 a 1 (percentual da meta)
+- Valores monetários estão em reais (R$)
+- Captação da base pode ser negativa (resgates líquidos)
+
+Cálculo do IEA:
+- IEA = (esforco_prospeccao + esforco_relacionamento) / 2
+- Cada componente é uma média ponderada de seus indicadores
+
+Troubleshooting comum:
+1. Valores NULL em janelas móveis: Normal nos primeiros meses de dados
+2. IEA zerado: Verificar se há dados fonte para o assessor no período
+3. Duplicação de registros: Adicionar PK ou verificar procedure de carga
+
+Contato para dúvidas: equipe-dados@m7investimentos.com.br
+*/
