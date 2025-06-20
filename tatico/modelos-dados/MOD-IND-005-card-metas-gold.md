@@ -388,15 +388,22 @@ EXEC gold.prc_validate_processing @debug = 1;
 - Novas features via procedures
 - Backward compatibility garantido
 
-## 14. Referências
+## 14. Histórico de Mudanças
 
-### 14.1 Scripts SQL
+| Versão | Data | Autor | Descrição |
+|--------|------|-------|-----------|
+| 1.0.0 | 2025-01-18 | bruno.chiaramonti | Criação inicial do documento |
+| 1.2.0 | 2025-01-20 | bruno.chiaramonti | Documentação do mapeamento XP→CRM, ProcessingSequence |
+
+## 15. Referências
+
+### 15.1 Scripts SQL
 - [QRY-IND-005-create_gold_card_metas.sql](../../operacional/queries/gold/QRY-IND-005-create_gold_card_metas.sql)
 - [QRY-IND-006-prc_process_performance_to_gold.sql](../../operacional/queries/gold/QRY-IND-006-prc_process_performance_to_gold.sql)
 - [QRY-IND-007-create_gold_performance_views.sql](../../operacional/queries/gold/QRY-IND-007-create_gold_performance_views.sql)
 - [QRY-IND-008-prc_validate_processing.sql](../../operacional/queries/gold/QRY-IND-008-prc_validate_processing.sql)
 
-### 14.2 Documentação Relacionada
+### 15.2 Documentação Relacionada
 - [ARQ-IND-001 - Performance Tracking System](../../estrategico/arquiteturas/ARQ-IND-001-performance-tracking-system.md)
 - [MOD-IND-002 - Performance Indicators Silver](MOD-IND-002-performance-indicators-silver.md)
 - [MOD-IND-003 - Performance Assignments Silver](MOD-IND-003-performance-assignments-silver.md)
@@ -406,5 +413,5 @@ EXEC gold.prc_validate_processing @debug = 1;
 
 **Documento criado por**: Bruno Chiaramonti  
 **Data**: 2025-01-18  
-**Versão**: 1.0.0  
+**Versão**: 1.2.0  
 **Status**: Aprovado

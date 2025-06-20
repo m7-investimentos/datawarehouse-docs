@@ -543,7 +543,19 @@ GO
 -- ==============================================================================
 -- 15. PERMISSÕES
 -- ==============================================================================
-GRANT EXECUTE ON gold.prc_validate_processing TO db_executor;
+-- Conceder permissão para roles customizados (se existirem)
+IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'db_executor')
+BEGIN
+    GRANT EXECUTE ON gold.prc_validate_processing TO db_executor;
+END
+
+-- Conceder permissão para usuários de Power BI (se existirem)
+IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'PowerBI_Users')
+BEGIN
+    GRANT EXECUTE ON gold.prc_validate_processing TO PowerBI_Users;
+END
+
+-- Nota: db_datawriter e db_datareader são roles built-in e não podem receber GRANTs diretos
 GO
 
 -- ==============================================================================

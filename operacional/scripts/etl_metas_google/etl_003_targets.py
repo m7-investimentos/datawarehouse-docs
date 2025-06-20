@@ -5,8 +5,8 @@
 ETL-IND-003 - Extração de Metas de Performance do Google Sheets
 ================================================================================
 Tipo: Script ETL
-Versão: 1.0.0
-Última atualização: 2025-01-17
+Versão: 1.0.1
+Última atualização: 2025-01-20
 Autor: bruno.chiaramonti@multisete.com
 Revisor: arquitetura.dados@m7investimentos.com.br
 Tags: [etl, performance, targets, metas, google-sheets, bronze]
@@ -365,10 +365,11 @@ class PerformanceTargetsETL:
         Returns:
             DataFrame com valores convertidos e validados
         """
-        # Converter para numérico
+        # Converter para numérico (tratando vírgula decimal)
         value_cols = ['target_value', 'stretch_value', 'minimum_value']
         for col in value_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            # Converter vírgula para ponto antes de converter para numérico
+            df[col] = df[col].astype(str).str.replace(',', '.').apply(pd.to_numeric, errors='coerce').fillna(0.0)
         
         # Identificar indicadores invertidos
         df['is_inverted'] = df['indicator_code'].isin(self.inverted_indicators).astype(int)

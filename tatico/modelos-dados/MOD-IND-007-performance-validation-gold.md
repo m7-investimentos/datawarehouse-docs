@@ -2,9 +2,9 @@
 título: Modelo de Validação de Performance Gold - Qualidade e Integridade
 tipo: MOD
 código: MOD-IND-007
-versão: 1.0.0
+versão: 1.0.1
 data_criação: 2025-01-18
-última_atualização: 2025-01-18
+última_atualização: 2025-01-20
 próxima_revisão: 2025-07-18
 responsável: bruno.chiaramonti@multisete.com
 aprovador: arquitetura.dados@m7investimentos.com.br
@@ -241,9 +241,15 @@ IF @fix_issues = 1
 INSERT INTO processing_log ...
 
 -- 6. Retornar status
-RETURN 0 -- Sucesso
-RETURN 1 -- Falha com erros
+RETURN 0 -- Sucesso (sem erros críticos)
+RETURN 1 -- Falha (erros críticos encontrados)
+RETURN 2 -- Aviso (apenas warnings, sem erros)
 ```
+
+**Códigos de Retorno**:
+- **0**: Validação completa sem erros críticos
+- **1**: Erros críticos encontrados que impedem consumo
+- **2**: Apenas avisos encontrados, dados podem ser consumidos com ressalvas
 
 ### 6.2 Modos de Execução
 
@@ -463,9 +469,13 @@ DECLARE @result INT;
 EXEC @result = gold.prc_validate_processing;
 
 IF @result = 0
-    PRINT 'Prosseguir com refresh BI'
-ELSE
+    PRINT 'Prosseguir com refresh BI - Sem erros'
+ELSE IF @result = 2
+    PRINT 'Prosseguir com refresh BI - Com avisos'
+ELSE IF @result = 1
 BEGIN
+    PRINT 'BLOQUEAR refresh BI - Erros críticos'
+    
     -- Buscar detalhes dos erros
     SELECT * FROM gold.processing_log
     WHERE log_id = SCOPE_IDENTITY();
@@ -473,7 +483,7 @@ BEGIN
     -- Notificar equipe
     EXEC msdb.dbo.sp_send_dbmail 
         @recipients = 'data-governance@m7.com',
-        @subject = 'Validação Gold Falhou',
+        @subject = 'Validação Gold Falhou - Erros Críticos',
         @body = 'Verificar erros no processing_log';
 END
 ```
@@ -496,5 +506,16 @@ END
 
 **Documento criado por**: Bruno Chiaramonti  
 **Data**: 2025-01-18  
-**Versão**: 1.0.0  
+## 15. Histórico de Mudanças
+
+| Versão | Data | Autor | Descrição |
+|--------|------|-------|------------|
+| 1.0.0 | 2025-01-18 | bruno.chiaramonti | Criação inicial do documento |
+| 1.0.1 | 2025-01-20 | bruno.chiaramonti | Documentação dos códigos de retorno da procedure |
+
+---
+
+**Documento criado por**: Bruno Chiaramonti  
+**Data**: 2025-01-18  
+**Versão**: 1.0.1  
 **Status**: Aprovado

@@ -2,8 +2,8 @@
 -- QRY-IND-006-prc_process_performance_to_gold
 -- ==============================================================================
 -- Tipo: Stored Procedure
--- Versão: 1.0.0
--- Última atualização: 2025-01-18
+-- Versão: 1.2.0
+-- Última atualização: 2025-01-20
 -- Autor: bruno.chiaramonti@multisete.com
 -- Revisor: arquitetura.dados@m7investimentos.com.br
 -- Tags: [gold, performance, procedure, etl, cálculo dinâmico]
@@ -42,6 +42,16 @@ Volume esperado: ~500 assessores × 20 indicadores = 10.000 cálculos
 */
 
 USE M7Medallion;
+GO
+
+-- Criar SEQUENCE para processing_id se não existir
+IF NOT EXISTS (SELECT * FROM sys.sequences WHERE name = 'ProcessingSequence')
+BEGIN
+    CREATE SEQUENCE dbo.ProcessingSequence
+        AS INT
+        START WITH 1
+        INCREMENT BY 1;
+END
 GO
 
 -- Drop procedure se existir
@@ -181,15 +191,19 @@ BEGIN
         );
         
         -- Popular com assessores que têm indicadores ativos no período
+        -- Faz mapeamento de código XP para código CRM real
         INSERT INTO #pessoas_processar (codigo_assessor_crm, nome_pessoa)
         SELECT DISTINCT 
-            a.codigo_assessor_crm,
-            p.nome_pessoa
+            COALESCE(p_crm.crm_id, a.codigo_assessor_crm) as codigo_assessor_crm,
+            COALESCE(p_crm.nome_pessoa, p_xp.nome_pessoa) as nome_pessoa
         FROM silver.performance_assignments a
-        INNER JOIN silver.dim_pessoas p ON a.codigo_assessor_crm = p.codigo_assessor_crm
+        -- Primeiro tenta encontrar pelo CRM direto
+        LEFT JOIN silver.dim_pessoas p_xp ON a.codigo_assessor_crm = p_xp.crm_id
+        -- Se não encontrar, busca considerando que é código XP (cod_aai)
+        LEFT JOIN silver.dim_pessoas p_crm ON a.codigo_assessor_crm = p_crm.cod_aai
         WHERE a.is_active = 1
           AND @period_start >= a.valid_from
-          AND (@crm_id IS NULL OR a.codigo_assessor_crm = @crm_id)
+          AND (@crm_id IS NULL OR a.codigo_assessor_crm = @crm_id OR p_crm.crm_id = @crm_id)
           AND EXISTS (
               SELECT 1 
               FROM silver.performance_targets t
@@ -231,9 +245,19 @@ BEGIN
         WHILE @@FETCH_STATUS = 0
         BEGIN
             BEGIN TRY
+                -- Declarar variável para código XP
+                DECLARE @current_xp_code VARCHAR(20);
+                
+                -- Buscar código XP correspondente ao CRM
+                SELECT @current_xp_code = cod_aai 
+                FROM silver.dim_pessoas 
+                WHERE crm_id = @current_crm_id;
+                
                 IF @debug = 1
                 BEGIN
-                    SET @msg = 'Processando: ' + @current_crm_id + ' - ' + ISNULL(@current_name, 'Nome não encontrado');
+                    SET @msg = 'Processando: CRM=' + @current_crm_id + 
+                               ' (XP=' + ISNULL(@current_xp_code, 'N/A') + ') - ' + 
+                               ISNULL(@current_name, 'Nome não encontrado');
                     RAISERROR(@msg, 0, 1) WITH NOWAIT;
                 END
                 
@@ -271,7 +295,7 @@ BEGIN
                     i.aggregation_method,
                     i.is_inverted,
                     a.indicator_weight,
-                    t.target_value,
+                    COALESCE(t.target_value, t.stretch_target, t.minimum_target) as target_value,
                     t.stretch_target,
                     t.minimum_target
                 FROM silver.performance_assignments a
@@ -281,7 +305,8 @@ BEGIN
                     t.indicator_id = a.indicator_id AND
                     t.period_start = @period_start AND
                     t.is_active = 1
-                WHERE a.codigo_assessor_crm = @current_crm_id
+                WHERE (a.codigo_assessor_crm = @current_crm_id 
+                       OR a.codigo_assessor_crm = @current_xp_code)
                   AND a.is_active = 1
                   AND i.is_active = 1
                   AND @period_start >= a.valid_from;
@@ -595,25 +620,25 @@ END
 GO
 
 -- ==============================================================================
--- 14. CRIAR SEQUENCE PARA PROCESSING_ID (SE NÃO EXISTIR)
+-- 14. PERMISSÕES
 -- ==============================================================================
-IF NOT EXISTS (SELECT * FROM sys.sequences WHERE name = 'ProcessingSequence')
+-- Conceder permissão para roles customizados (se existirem)
+IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'db_executor')
 BEGIN
-    CREATE SEQUENCE dbo.ProcessingSequence
-        AS INT
-        START WITH 1
-        INCREMENT BY 1;
+    GRANT EXECUTE ON gold.prc_process_performance_to_gold TO db_executor;
 END
+
+-- Conceder permissão para usuários de Power BI (se existirem)
+IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'PowerBI_Users')
+BEGIN
+    GRANT EXECUTE ON gold.prc_process_performance_to_gold TO PowerBI_Users;
+END
+
+-- Nota: db_datawriter e db_datareader são roles built-in e não podem receber GRANTs diretos
 GO
 
 -- ==============================================================================
--- 15. PERMISSÕES
--- ==============================================================================
-GRANT EXECUTE ON gold.prc_process_performance_to_gold TO db_executor;
-GO
-
--- ==============================================================================
--- 16. EXEMPLOS DE USO
+-- 15. EXEMPLOS DE USO
 -- ==============================================================================
 /*
 -- Processar mês anterior completo (uso padrão)
@@ -642,16 +667,19 @@ ORDER BY indicator_weight DESC;
 */
 
 -- ==============================================================================
--- 17. HISTÓRICO DE MUDANÇAS
+-- 16. HISTÓRICO DE MUDANÇAS
 -- ==============================================================================
 /*
 Versão  | Data       | Autor                  | Descrição
 --------|------------|------------------------|--------------------------------------------
 1.0.0   | 2025-01-18 | bruno.chiaramonti     | Criação inicial da procedure
+1.0.1   | 2025-01-20 | bruno.chiaramonti     | Correção: JOIN com dim_pessoas usando crm_id
+1.1.0   | 2025-01-20 | bruno.chiaramonti     | Correção: COALESCE para target_value NULL
+1.2.0   | 2025-01-20 | bruno.chiaramonti     | Mapeamento código XP para CRM real no entity_id
 */
 
 -- ==============================================================================
--- 18. NOTAS E OBSERVAÇÕES
+-- 17. NOTAS E OBSERVAÇÕES
 -- ==============================================================================
 /*
 Notas importantes:

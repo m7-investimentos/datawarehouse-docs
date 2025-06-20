@@ -43,15 +43,28 @@ GO
 -- Criar view pivot (transforma EAV em colunar)
 CREATE VIEW gold.vw_card_metas_pivot
 AS
-WITH IndicatorPivot AS (
+WITH CurrentStructure AS (
+    -- Buscar estrutura atual de cada pessoa no período
+    SELECT 
+        fep.crm_id,
+        fep.id_estrutura,
+        e.nome_estrutura,
+        e.estrutura_pai,
+        ep.nome_estrutura as estrutura_pai_nome
+    FROM silver.fact_estrutura_pessoas fep
+    INNER JOIN silver.dim_estruturas e ON fep.id_estrutura = e.id_estrutura
+    LEFT JOIN silver.dim_estruturas ep ON e.estrutura_pai = ep.id_estrutura
+    WHERE fep.data_saida IS NULL OR fep.data_saida >= GETDATE()
+),
+IndicatorPivot AS (
     SELECT 
         cm.period_start,
         cm.period_end,
         cm.entity_id as codigo_assessor_crm,
         p.nome_pessoa,
-        p.tipo_pessoa,
-        p.equipe_comercial,
-        p.regional,
+        p.assessor_nivel as tipo_pessoa,
+        cs.nome_estrutura as equipe_comercial,
+        COALESCE(cs.estrutura_pai_nome, cs.nome_estrutura) as regional,
         cm.attribute_code,
         cm.target_value,
         cm.realized_value,
@@ -59,7 +72,8 @@ WITH IndicatorPivot AS (
         cm.weighted_achievement,
         cm.achievement_status
     FROM gold.card_metas cm
-    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.codigo_assessor_crm
+    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.crm_id
+    LEFT JOIN CurrentStructure cs ON p.crm_id = cs.crm_id
     WHERE cm.indicator_type = 'CARD'
       AND cm.is_calculated = 1
 )
@@ -131,16 +145,29 @@ GO
 -- Criar view de score ponderado
 CREATE VIEW gold.vw_card_metas_weighted_score
 AS
-WITH ScoreCalc AS (
+WITH CurrentStructure AS (
+    -- Buscar estrutura atual de cada pessoa no período
+    SELECT 
+        fep.crm_id,
+        fep.id_estrutura,
+        e.nome_estrutura,
+        e.estrutura_pai,
+        ep.nome_estrutura as estrutura_pai_nome
+    FROM silver.fact_estrutura_pessoas fep
+    INNER JOIN silver.dim_estruturas e ON fep.id_estrutura = e.id_estrutura
+    LEFT JOIN silver.dim_estruturas ep ON e.estrutura_pai = ep.id_estrutura
+    WHERE fep.data_saida IS NULL OR fep.data_saida >= GETDATE()
+),
+ScoreCalc AS (
     SELECT 
         cm.period_start,
         cm.period_end,
         cm.entity_id as codigo_assessor_crm,
         p.nome_pessoa,
-        p.tipo_pessoa,
-        p.equipe_comercial,
-        p.regional,
-        p.gestor_direto,
+        p.assessor_nivel as tipo_pessoa,
+        cs.nome_estrutura as equipe_comercial,
+        COALESCE(cs.estrutura_pai_nome, cs.nome_estrutura) as regional,
+        NULL as gestor_direto,
         
         -- Métricas de score
         COUNT(CASE WHEN cm.indicator_type = 'CARD' THEN 1 END) as qtd_indicadores_card,
@@ -162,17 +189,17 @@ WITH ScoreCalc AS (
         MIN(CASE WHEN cm.indicator_type = 'CARD' THEN cm.achievement_percentage END) as pior_atingimento
         
     FROM gold.card_metas cm
-    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.codigo_assessor_crm
+    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.crm_id
+    LEFT JOIN CurrentStructure cs ON p.crm_id = cs.crm_id
     WHERE cm.is_calculated = 1
     GROUP BY 
         cm.period_start,
         cm.period_end,
         cm.entity_id,
         p.nome_pessoa,
-        p.tipo_pessoa,
-        p.equipe_comercial,
-        p.regional,
-        p.gestor_direto
+        p.assessor_nivel,
+        cs.nome_estrutura,
+        cs.estrutura_pai_nome
 ),
 ClassificationCalc AS (
     SELECT 
@@ -231,15 +258,28 @@ GO
 -- Criar view de rankings
 CREATE VIEW gold.vw_card_metas_ranking
 AS
-WITH RankingBase AS (
+WITH CurrentStructure AS (
+    -- Buscar estrutura atual de cada pessoa no período
+    SELECT 
+        fep.crm_id,
+        fep.id_estrutura,
+        e.nome_estrutura,
+        e.estrutura_pai,
+        ep.nome_estrutura as estrutura_pai_nome
+    FROM silver.fact_estrutura_pessoas fep
+    INNER JOIN silver.dim_estruturas e ON fep.id_estrutura = e.id_estrutura
+    LEFT JOIN silver.dim_estruturas ep ON e.estrutura_pai = ep.id_estrutura
+    WHERE fep.data_saida IS NULL OR fep.data_saida >= GETDATE()
+),
+RankingBase AS (
     SELECT 
         cm.period_start,
         cm.period_end,
         cm.entity_id as codigo_assessor_crm,
         p.nome_pessoa,
-        p.tipo_pessoa,
-        p.equipe_comercial,
-        p.regional,
+        p.assessor_nivel as tipo_pessoa,
+        cs.nome_estrutura as equipe_comercial,
+        COALESCE(cs.estrutura_pai_nome, cs.nome_estrutura) as regional,
         cm.attribute_code as indicador,
         cm.attribute_name as indicador_nome,
         cm.realized_value,
@@ -260,17 +300,18 @@ WITH RankingBase AS (
         
         -- Rankings por equipe
         RANK() OVER (
-            PARTITION BY cm.period_start, cm.attribute_code, p.equipe_comercial
+            PARTITION BY cm.period_start, cm.attribute_code, cs.nome_estrutura
             ORDER BY cm.achievement_percentage DESC
         ) as ranking_equipe,
         
         -- Total na equipe
         COUNT(*) OVER (
-            PARTITION BY cm.period_start, cm.attribute_code, p.equipe_comercial
+            PARTITION BY cm.period_start, cm.attribute_code, cs.nome_estrutura
         ) as total_equipe
         
     FROM gold.card_metas cm
-    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.codigo_assessor_crm
+    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.crm_id
+    LEFT JOIN CurrentStructure cs ON p.crm_id = cs.crm_id
     WHERE cm.indicator_type = 'CARD'
       AND cm.achievement_percentage IS NOT NULL
 ),
@@ -358,7 +399,20 @@ GO
 -- Criar view consolidada para dashboards
 CREATE VIEW gold.vw_card_metas_dashboard
 AS
-WITH CurrentPeriod AS (
+WITH CurrentStructure AS (
+    -- Buscar estrutura atual de cada pessoa no período
+    SELECT 
+        fep.crm_id,
+        fep.id_estrutura,
+        e.nome_estrutura,
+        e.estrutura_pai,
+        ep.nome_estrutura as estrutura_pai_nome
+    FROM silver.fact_estrutura_pessoas fep
+    INNER JOIN silver.dim_estruturas e ON fep.id_estrutura = e.id_estrutura
+    LEFT JOIN silver.dim_estruturas ep ON e.estrutura_pai = ep.id_estrutura
+    WHERE fep.data_saida IS NULL OR fep.data_saida >= GETDATE()
+),
+CurrentPeriod AS (
     -- Identificar período mais recente
     SELECT MAX(period_start) as ultimo_periodo
     FROM gold.card_metas
@@ -374,12 +428,12 @@ DashboardData AS (
         -- Dados do assessor
         cm.entity_id as codigo_assessor_crm,
         p.nome_pessoa,
-        p.tipo_pessoa,
-        p.equipe_comercial,
-        p.regional,
-        p.gestor_direto,
-        p.data_admissao,
-        DATEDIFF(MONTH, p.data_admissao, cm.period_start) as meses_empresa,
+        p.assessor_nivel as tipo_pessoa,
+        cs.nome_estrutura as equipe_comercial,
+        COALESCE(cs.estrutura_pai_nome, cs.nome_estrutura) as regional,
+        NULL as gestor_direto,
+        p.data_inicio_vigencia as data_admissao,
+        DATEDIFF(MONTH, p.data_inicio_vigencia, cm.period_start) as meses_empresa,
         
         -- Dados do indicador
         cm.attribute_code as indicador_codigo,
@@ -414,7 +468,8 @@ DashboardData AS (
         cm.processing_duration_ms as tempo_calculo_ms
         
     FROM gold.card_metas cm
-    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.codigo_assessor_crm
+    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.crm_id
+    LEFT JOIN CurrentStructure cs ON p.crm_id = cs.crm_id
     WHERE cm.is_calculated = 1
 ),
 Aggregations AS (
@@ -483,7 +538,20 @@ GO
 -- Criar view para análise de série temporal
 CREATE VIEW gold.vw_card_metas_serie_temporal
 AS
-WITH SerieBase AS (
+WITH CurrentStructure AS (
+    -- Buscar estrutura atual de cada pessoa no período
+    SELECT 
+        fep.crm_id,
+        fep.id_estrutura,
+        e.nome_estrutura,
+        e.estrutura_pai,
+        ep.nome_estrutura as estrutura_pai_nome
+    FROM silver.fact_estrutura_pessoas fep
+    INNER JOIN silver.dim_estruturas e ON fep.id_estrutura = e.id_estrutura
+    LEFT JOIN silver.dim_estruturas ep ON e.estrutura_pai = ep.id_estrutura
+    WHERE fep.data_saida IS NULL OR fep.data_saida >= GETDATE()
+),
+SerieBase AS (
     SELECT 
         cm.entity_id as codigo_assessor_crm,
         p.nome_pessoa,
@@ -527,7 +595,8 @@ WITH SerieBase AS (
         ) as ranking_historico
         
     FROM gold.card_metas cm
-    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.codigo_assessor_crm
+    LEFT JOIN silver.dim_pessoas p ON cm.entity_id = p.crm_id
+    LEFT JOIN CurrentStructure cs ON p.crm_id = cs.crm_id
     WHERE cm.indicator_type = 'CARD'
       AND cm.is_calculated = 1
 )
@@ -588,21 +657,30 @@ GO
 -- ==============================================================================
 -- 7. PERMISSÕES
 -- ==============================================================================
--- Conceder permissões de leitura para todas as views
-GRANT SELECT ON gold.vw_card_metas_pivot TO db_datareader;
-GRANT SELECT ON gold.vw_card_metas_weighted_score TO db_datareader;
-GRANT SELECT ON gold.vw_card_metas_ranking TO db_datareader;
-GRANT SELECT ON gold.vw_card_metas_dashboard TO db_datareader;
-GRANT SELECT ON gold.vw_card_metas_serie_temporal TO db_datareader;
+-- Conceder permissões de leitura para roles customizados (se existirem)
+-- Nota: db_datareader já tem permissão automática para SELECT em todas as views
+IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'PowerBI_Users')
+BEGIN
+    GRANT SELECT ON gold.vw_card_metas_pivot TO PowerBI_Users;
+    GRANT SELECT ON gold.vw_card_metas_weighted_score TO PowerBI_Users;
+    GRANT SELECT ON gold.vw_card_metas_ranking TO PowerBI_Users;
+    GRANT SELECT ON gold.vw_card_metas_dashboard TO PowerBI_Users;
+    GRANT SELECT ON gold.vw_card_metas_serie_temporal TO PowerBI_Users;
+END
 GO
 
 -- ==============================================================================
 -- 8. ESTATÍSTICAS
 -- ==============================================================================
--- Criar estatísticas para otimizar queries nas views
-CREATE STATISTICS stat_card_metas_period ON gold.card_metas(period_start, entity_id);
-CREATE STATISTICS stat_card_metas_indicator ON gold.card_metas(attribute_code, indicator_type);
-CREATE STATISTICS stat_card_metas_achievement ON gold.card_metas(achievement_percentage, weighted_achievement);
+-- Criar estatísticas para otimizar queries nas views (se não existirem)
+IF NOT EXISTS (SELECT * FROM sys.stats WHERE name = 'stat_card_metas_period' AND object_id = OBJECT_ID('gold.card_metas'))
+    CREATE STATISTICS stat_card_metas_period ON gold.card_metas(period_start, entity_id);
+
+IF NOT EXISTS (SELECT * FROM sys.stats WHERE name = 'stat_card_metas_indicator' AND object_id = OBJECT_ID('gold.card_metas'))
+    CREATE STATISTICS stat_card_metas_indicator ON gold.card_metas(attribute_code, indicator_type);
+
+IF NOT EXISTS (SELECT * FROM sys.stats WHERE name = 'stat_card_metas_achievement' AND object_id = OBJECT_ID('gold.card_metas'))
+    CREATE STATISTICS stat_card_metas_achievement ON gold.card_metas(achievement_percentage, weighted_achievement);
 GO
 
 -- ==============================================================================
@@ -656,6 +734,7 @@ SET STATISTICS IO OFF;
 Versão  | Data       | Autor                  | Descrição
 --------|------------|------------------------|--------------------------------------------
 1.0.0   | 2025-01-18 | bruno.chiaramonti     | Criação inicial das views Gold
+1.1.0   | 2025-01-20 | bruno.chiaramonti     | Adicionado suporte para estrutura organizacional via CTEs
 */
 
 -- ==============================================================================

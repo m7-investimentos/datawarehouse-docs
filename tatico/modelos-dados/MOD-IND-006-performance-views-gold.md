@@ -109,8 +109,11 @@ MAX(CASE WHEN attribute_code = 'INDICATOR_X' THEN weighted_achievement END) as i
 **Estrutura de Saída**:
 | Coluna | Tipo | Descrição | Cálculo |
 |--------|------|-----------|---------|
-| codigo_assessor_crm | VARCHAR(20) | ID assessor | - |
+| codigo_assessor_crm | VARCHAR(20) | ID assessor (CRM real) | entity_id |
 | nome_pessoa | VARCHAR(200) | Nome | JOIN dim_pessoas |
+| tipo_pessoa | VARCHAR(20) | Classificação | Via CurrentStructure CTE |
+| equipe_comercial | VARCHAR(100) | Equipe | Via CurrentStructure CTE |
+| regional | VARCHAR(100) | Regional | Via CurrentStructure CTE |
 | score_ponderado | DECIMAL(5,2) | Score total | SUM(weighted_achievement) |
 | classificacao_performance | VARCHAR(20) | Faixa performance | CASE score |
 | percentil_periodo | DECIMAL(5,1) | Posição relativa | PERCENT_RANK() |
@@ -459,9 +462,16 @@ ORDER BY period_start;
 - [SQL Server Query Store Best Practices](https://docs.microsoft.com/en-us/sql/relational-databases/performance/query-store-best-practices)
 - [Power BI DirectQuery Guidance](https://docs.microsoft.com/en-us/power-bi/connect-data/desktop-directquery-about)
 
+## 12. Histórico de Mudanças
+
+| Versão | Data | Autor | Descrição |
+|--------|------|-------|-----------|
+| 1.0.0 | 2025-01-18 | bruno.chiaramonti | Criação inicial do documento |
+| 1.1.0 | 2025-01-20 | bruno.chiaramonti | Documentação da integração organizacional via CTEs e entity_id com CRM real |
+
 ---
 
 **Documento criado por**: Bruno Chiaramonti  
 **Data**: 2025-01-18  
-**Versão**: 1.0.0  
+**Versão**: 1.1.0  
 **Status**: Aprovado
