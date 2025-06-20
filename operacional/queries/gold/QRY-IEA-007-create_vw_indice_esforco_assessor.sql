@@ -279,3 +279,97 @@ INNER JOIN metricas_trimestrais mt
     ON f.cod_assessor = mt.cod_assessor 
     AND f.ano_mes = mt.ano_mes;
 GO
+
+-- ==============================================================================
+-- 7. CONSIDERAÇÕES TÉCNICAS
+-- ==============================================================================
+/*
+- CTEs utilizadas para modularizar a lógica complexa:
+  1. registros_mais_recentes: Garante apenas o último registro por assessor/mês
+  2. base_dados: Filtra apenas registros válidos (rn = 1)
+  3. metricas_anuais: Calcula média acumulada desde janeiro
+  4. metricas_semestrais: Calcula média acumulada do semestre (reinicia em jul)
+  5. metricas_trimestrais: Calcula média acumulada do trimestre
+
+- ROW_NUMBER() usado para eliminar duplicatas por data_carga
+- JOINs com estrutura vigente consideram data_entrada/data_saida
+- Médias acumuladas calculadas via self-joins para melhor performance
+*/
+
+-- ==============================================================================
+-- 8. QUERIES AUXILIARES PARA VALIDAÇÃO
+-- ==============================================================================
+/*
+-- Verificar quantidade de registros por período
+SELECT 
+    ano_mes,
+    COUNT(DISTINCT cod_assessor) as qtd_assessores,
+    AVG(indice_esforco_assessor) as iea_medio,
+    MIN(indice_esforco_assessor) as iea_minimo,
+    MAX(indice_esforco_assessor) as iea_maximo
+FROM gold.vw_indice_esforco_assessor
+GROUP BY ano_mes
+ORDER BY ano_mes DESC;
+
+-- Validar cálculo de acumulados
+SELECT TOP 10
+    cod_assessor,
+    nome_assessor,
+    ano_mes,
+    indice_esforco_assessor as iea_mes,
+    indice_esforco_assessor_trimestre as iea_trimestre,
+    indice_esforco_assessor_semestre as iea_semestre,
+    indice_esforco_assessor_ano as iea_ano
+FROM gold.vw_indice_esforco_assessor
+WHERE ano_mes = (SELECT MAX(ano_mes) FROM gold.vw_indice_esforco_assessor)
+ORDER BY indice_esforco_assessor DESC;
+
+-- Verificar assessores sem estrutura definida
+SELECT DISTINCT
+    cod_assessor,
+    nome_assessor,
+    COUNT(*) as meses_sem_estrutura
+FROM gold.vw_indice_esforco_assessor
+WHERE estrutura_id IS NULL
+GROUP BY cod_assessor, nome_assessor
+ORDER BY meses_sem_estrutura DESC;
+*/
+
+-- ==============================================================================
+-- 9. HISTÓRICO DE MUDANÇAS
+-- ==============================================================================
+/*
+Versão  | Data       | Autor           | Descrição
+--------|------------|-----------------|--------------------------------------------
+1.0.0   | 2025-01-20 | equipe.dados   | Criação inicial da view
+
+*/
+
+-- ==============================================================================
+-- 10. NOTAS E OBSERVAÇÕES
+-- ==============================================================================
+/*
+Notas importantes:
+- View garante apenas o registro mais recente por assessor/mês usando ROW_NUMBER()
+- Métricas acumuladas são recalculadas dinamicamente (não usa campos da silver)
+- Estrutura vigente é determinada pela data do primeiro dia do mês
+- IEA varia de 0 a 1, onde 1 representa esforço máximo
+- Janelas móveis (3, 6, 12 meses) vêm diretamente da silver
+
+Cálculos de acumulados:
+- Anual: Média desde janeiro até o mês atual
+- Semestral: Média desde jan (S1) ou jul (S2) até o mês atual
+- Trimestral: Média desde início do trimestre até o mês atual
+
+Otimizações recomendadas:
+- Índice em fact_indice_esforco_assessor (cod_assessor, ano_mes, data_carga)
+- Índice em fact_estrutura_pessoas (crm_id, data_entrada, data_saida)
+- Estatísticas atualizadas nas tabelas base
+
+Limitações conhecidas:
+- Performance pode degradar com grandes volumes históricos
+- Assessores sem registro em dim_pessoas não aparecem
+- Métricas acumuladas podem ter valores incompletos nos primeiros meses
+
+Contato para dúvidas: equipe-dados@m7investimentos.com.br
+*/
