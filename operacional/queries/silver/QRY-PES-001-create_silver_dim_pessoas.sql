@@ -3,21 +3,21 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 CREATE TABLE [silver].[dim_pessoas](
-    [crm_id] [varchar](20) NOT NULL,
-    [nome_pessoa] [varchar](200) NOT NULL,
-    [cod_aai] [varchar](50) NULL,
-    [id_avenue] [varchar](50) NULL,
-    [id_rd_station] [varchar](50) NULL,
-    [data_nascimento] [date] NULL,
-    [data_inicio_vigencia] [date] NOT NULL,
-    [data_fim_vigencia] [date] NULL,
-    [email_multisete] [varchar](200) NULL,
-    [email_xp] [varchar](200) NULL,
-    [observacoes] [varchar](200) NULL,
-    [assessor_nivel] [varchar](50) NULL,
+	[crm_id] [varchar](20) NOT NULL,
+	[nome_pessoa] [varchar](200) NOT NULL,
+	[cod_aai] [varchar](50) NULL,
+	[id_avenue] [varchar](50) NULL,
+	[id_rd_station] [varchar](50) NULL,
+	[data_nascimento] [date] NULL,
+	[data_inicio_vigencia] [date] NOT NULL,
+	[data_fim_vigencia] [date] NULL,
+	[email_multisete] [varchar](200) NULL,
+	[email_xp] [varchar](200) NULL,
+	[observacoes] [varchar](200) NULL,
+	[assessor_nivel] [varchar](50) NULL,
  CONSTRAINT [PK_dim_pessoas] PRIMARY KEY CLUSTERED 
 (
-    [crm_id] ASC
+	[crm_id] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO

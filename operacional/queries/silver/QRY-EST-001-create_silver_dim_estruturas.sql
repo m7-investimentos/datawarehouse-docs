@@ -3,14 +3,14 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 CREATE TABLE [silver].[dim_estruturas](
-    [id_estrutura] [int] NOT NULL,
-    [nome_estrutura] [varchar](100) NOT NULL,
-    [estrutura_pai] [int] NULL,
-    [observacoes] [varchar](200) NULL,
-    [crm_id_lider] [varchar](20) NULL,
+	[id_estrutura] [int] NOT NULL,
+	[nome_estrutura] [varchar](100) NOT NULL,
+	[estrutura_pai] [int] NULL,
+	[observacoes] [varchar](200) NULL,
+	[crm_id_lider] [varchar](20) NULL,
  CONSTRAINT [PK_dim_estruturas] PRIMARY KEY CLUSTERED 
 (
-    [id_estrutura] ASC
+	[id_estrutura] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO

@@ -3,21 +3,21 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 CREATE TABLE [silver].[dim_calendario](
-    [data_ref] [date] NOT NULL,
-    [dia] [tinyint] NOT NULL,
-    [mes] [smallint] NULL,
-    [ano] [smallint] NOT NULL,
-    [ano_mes] [char](6) NOT NULL,
-    [nome_mes] [varchar](20) NOT NULL,
-    [trimestre] [char](2) NOT NULL,
-    [numero_da_semana] [tinyint] NOT NULL,
-    [dia_da_semana] [varchar](20) NOT NULL,
-    [dia_da_semana_num] [tinyint] NOT NULL,
-    [tipo_dia] [varchar](15) NOT NULL,
-    [observacoes] [varchar](200) NULL,
+	[data_ref] [date] NOT NULL,
+	[dia] [tinyint] NOT NULL,
+	[mes] [smallint] NULL,
+	[ano] [smallint] NOT NULL,
+	[ano_mes] [char](6) NOT NULL,
+	[nome_mes] [varchar](20) NOT NULL,
+	[trimestre] [char](2) NOT NULL,
+	[numero_da_semana] [tinyint] NOT NULL,
+	[dia_da_semana] [varchar](20) NOT NULL,
+	[dia_da_semana_num] [tinyint] NOT NULL,
+	[tipo_dia] [varchar](15) NOT NULL,
+	[observacoes] [varchar](200) NULL,
  CONSTRAINT [PK_dim_calendario] PRIMARY KEY CLUSTERED 
 (
-    [data_ref] ASC
+	[data_ref] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO

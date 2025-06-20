@@ -82,129 +82,25 @@ GO
 -- ==============================================================================
 
 CREATE TABLE [silver].[fact_patrimonio](
-    [data_ref] [date] NOT NULL,
-    [conta_xp_cliente] [int] NOT NULL,
-    [patrimonio_xp] [decimal](18, 2) NULL,
-    [patrimonio_declarado] [decimal](18, 2) NULL,
-    [share_of_wallet] [decimal](18, 2) NULL,
-    [patrimonio_open_investment] [decimal](18, 2) NULL
+	[data_ref] [date] NOT NULL,
+	[conta_xp_cliente] [int] NOT NULL,
+	[patrimonio_xp] [decimal](18, 2) NULL,
+	[patrimonio_declarado] [decimal](18, 2) NULL,
+	[share_of_wallet] [decimal](18, 2) NULL,
+	[patrimonio_open_investment] [decimal](18, 2) NULL
 ) ON [PRIMARY]
 GO
-
--- ==============================================================================
--- 7. DOCUMENTAÇÃO DAS COLUNAS (EXTENDED PROPERTIES)
--- ==============================================================================
-
--- Documentação da coluna data_ref
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Data de referência para os dados de patrimônio',
-    @level0type=N'SCHEMA', @level0name=N'silver',
-    @level1type=N'TABLE', @level1name=N'fact_patrimonio',
-    @level2type=N'COLUMN', @level2name=N'data_ref'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Data de referência para os dados de patrimônio' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_patrimonio', @level2type=N'COLUMN',@level2name=N'data_ref'
 GO
-
--- Documentação da coluna conta_xp_cliente
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Número da conta do cliente na XP',
-    @level0type=N'SCHEMA', @level0name=N'silver',
-    @level1type=N'TABLE', @level1name=N'fact_patrimonio',
-    @level2type=N'COLUMN', @level2name=N'conta_xp_cliente'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Número da conta do cliente na XP' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_patrimonio', @level2type=N'COLUMN',@level2name=N'conta_xp_cliente'
 GO
-
--- Documentação da coluna patrimonio_xp
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Valor do patrimônio do cliente na XP',
-    @level0type=N'SCHEMA', @level0name=N'silver',
-    @level1type=N'TABLE', @level1name=N'fact_patrimonio',
-    @level2type=N'COLUMN', @level2name=N'patrimonio_xp'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Valor do patrimônio do cliente na XP' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_patrimonio', @level2type=N'COLUMN',@level2name=N'patrimonio_xp'
 GO
-
--- Documentação da coluna patrimonio_declarado
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Valor do patrimônio declarado pelo cliente',
-    @level0type=N'SCHEMA', @level0name=N'silver',
-    @level1type=N'TABLE', @level1name=N'fact_patrimonio',
-    @level2type=N'COLUMN', @level2name=N'patrimonio_declarado'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Valor do patrimônio declarado pelo cliente' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_patrimonio', @level2type=N'COLUMN',@level2name=N'patrimonio_declarado'
 GO
-
--- Documentação da coluna share_of_wallet
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Percentil do cliente na carteira de investimentos comparado com o seu patrimônio declarado',
-    @level0type=N'SCHEMA', @level0name=N'silver',
-    @level1type=N'TABLE', @level1name=N'fact_patrimonio',
-    @level2type=N'COLUMN', @level2name=N'share_of_wallet'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'percentil do cliente na carteira de investimentos comparado com o seu patrimonio declarado' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_patrimonio', @level2type=N'COLUMN',@level2name=N'share_of_wallet'
 GO
-
--- Documentação da coluna patrimonio_open_investment
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Valor do investimento do cliente em outras instituições',
-    @level0type=N'SCHEMA', @level0name=N'silver',
-    @level1type=N'TABLE', @level1name=N'fact_patrimonio',
-    @level2type=N'COLUMN', @level2name=N'patrimonio_open_investment'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Valor do investimento do cliente em outras instituições' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_patrimonio', @level2type=N'COLUMN',@level2name=N'patrimonio_open_investment'
 GO
-
--- Documentação da tabela
-EXEC sys.sp_addextendedproperty 
-    @name=N'MS_Description', 
-    @value=N'Tabela de fatos contendo informações sobre o patrimônio dos clientes, incluindo patrimônio na XP, patrimônio declarado e investimentos em outras instituições',
-    @level0type=N'SCHEMA', @level0name=N'silver',
-    @level1type=N'TABLE', @level1name=N'fact_patrimonio'
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Tabela de fatos contendo informações sobre o patrimônio dos clientes, incluindo patrimônio na XP, patrimônio declarado e investimentos em outras instituicoes' , @level0type=N'SCHEMA',@level0name=N'silver', @level1type=N'TABLE',@level1name=N'fact_patrimonio'
 GO
-
--- ==============================================================================
--- 8. ÍNDICES RECOMENDADOS (COMENTADOS PARA IMPLEMENTAÇÃO FUTURA)
--- ==============================================================================
-/*
--- Índice clustered na chave primária composta
-CREATE CLUSTERED INDEX IX_fact_patrimonio_data_conta 
-ON [silver].[fact_patrimonio] ([data_ref], [conta_xp_cliente])
-GO
-
--- Índice para consultas por conta
-CREATE NONCLUSTERED INDEX IX_fact_patrimonio_conta 
-ON [silver].[fact_patrimonio] ([conta_xp_cliente])
-INCLUDE ([patrimonio_xp], [patrimonio_declarado], [share_of_wallet])
-GO
-
--- Índice para análises de share of wallet
-CREATE NONCLUSTERED INDEX IX_fact_patrimonio_share 
-ON [silver].[fact_patrimonio] ([share_of_wallet])
-WHERE [share_of_wallet] IS NOT NULL
-GO
-*/
-
--- ==============================================================================
--- 9. HISTÓRICO DE MUDANÇAS
--- ==============================================================================
-/*
-Versão  | Data       | Autor           | Descrição
---------|------------|-----------------|--------------------------------------------
-1.0.0   | 2025-01-13 | [Nome]         | Criação inicial da tabela fact_patrimonio
-
-*/
-
--- ==============================================================================
--- 10. NOTAS E OBSERVAÇÕES
--- ==============================================================================
-/*
-Notas importantes:
-- A tabela não possui chave primária definida. Recomenda-se adicionar uma PK composta 
-  em (data_ref, conta_xp_cliente) para garantir unicidade
-- O campo share_of_wallet representa o percentual do patrimônio declarado que está 
-  investido na XP (patrimonio_xp / patrimonio_declarado * 100)
-- Dados de Open Investment são obtidos através de APIs externas e podem ter defasagem
-- Considerar particionamento por data_ref para tabelas com grande volume de dados
-
-Troubleshooting comum:
-1. Erro de permissão: Verificar se o usuário tem permissão CREATE TABLE no schema silver
-2. Schema não existe: Executar CREATE SCHEMA silver antes desta query
-3. Tipos de dados: DECIMAL(18,2) suporta valores até 9.999.999.999.999.999,99
-
-Contato para dúvidas: [equipe-dados@m7investimentos.com.br]
-*/
