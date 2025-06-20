@@ -1,7 +1,124 @@
+-- ==============================================================================
+-- QRY-CLI-006-CREATE_VW_FACT_CLIENTE_PERFIL_HISTORICO
+-- ==============================================================================
+-- Tipo: View
+-- Versão: 1.0.0
+-- Última atualização: 2025-01-20
+-- Autor: [nome.sobrenome@m7investimentos.com.br]
+-- Revisor: [nome.sobrenome@m7investimentos.com.br]
+-- Tags: [view, clientes, perfil, histórico, share_of_wallet, silver]
+-- Status: produção
+-- Banco de Dados: SQL Server
+-- Schema: silver
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: View que realiza cálculos complexos de perfil histórico de clientes,
+           incluindo patrimônio, share of wallet, faixa etária, tempo de cliente
+           e categorização. Une dados de múltiplas fontes bronze para criar
+           uma visão consolidada mensal dos clientes.
+
+Casos de uso:
+- Base para tabela fact_cliente_perfil_historico
+- Análise de evolução patrimonial dos clientes
+- Cálculo de share of wallet entre XP e Open Investment
+- Segmentação de clientes por perfil e comportamento
+- Análise de safras (coortes) de clientes
+
+Frequência de execução: Sob demanda (materializada mensalmente)
+Tempo médio de execução: 3-5 minutos para consulta completa
+Volume esperado de linhas: ~7M registros (histórico diário todos clientes)
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Não aplicável - View sem parâmetros
+
+Para filtrar períodos específicos, usar WHERE na consulta:
+SELECT * FROM silver.vw_fact_cliente_perfil_historico 
+WHERE data_ref = EOMONTH(GETDATE(), -1) -- Último dia do mês anterior
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+Colunas retornadas:
+
+| Coluna                      | Tipo          | Descrição                                           | Exemplo           |
+|-----------------------------|---------------|-----------------------------------------------------|-------------------|
+| conta_xp_cliente            | INT           | Código único do cliente                             | 123456            |
+| data_ref                    | DATE          | Data de referência do registro                      | 2024-12-31        |
+| patrimonio_declarado        | DECIMAL(18,2) | Patrimônio em outras instituições                   | 500000.00         |
+| patrimonio_xp               | DECIMAL(18,2) | Patrimônio na XP                                    | 300000.00         |
+| patrimonio_open_investment  | DECIMAL(18,2) | Patrimônio no Open Investment                       | 200000.00         |
+| share_of_wallet             | DECIMAL(5,4)  | % do patrimônio na XP (0-1)                        | 0.6000            |
+| modelo_remuneracao          | VARCHAR(20)   | Fee Based ou Commission Based                       | Commission Based  |
+| suitability                 | VARCHAR(50)   | Perfil de risco                                     | Moderado          |
+| tipo_investidor             | VARCHAR(100)  | Classificação CVM                                   | Investidor Regular|
+| segmento_cliente            | VARCHAR(50)   | Segmento (apenas PJ)                                | Corporate         |
+| status_cliente              | VARCHAR(20)   | ATIVO ou INATIVO                                    | ATIVO             |
+| cod_assessor                | VARCHAR(20)   | Código do assessor                                  | AAI123            |
+| faixa_etaria                | VARCHAR(50)   | Classificação etária                                | 36-45             |
+| meses_cliente_m7            | INT           | Tempo como cliente M7                               | 24                |
+| safra_cliente_m7            | VARCHAR(6)    | Ano-mês de entrada (YYYYMM)                        | 202301            |
+
+Ordenação padrão: Nenhuma (usar ORDER BY na consulta)
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas de origem (bronze):
+- [bronze].[xp_positivador]: Dados diários de patrimônio e status
+  * Campos: cod_xp, data_ref, aplicacao_financeira_declarada, net_em_M, 
+            status_cliente, cod_aai, data_nascimento, data_cadastro
+  * Volume: ~7M registros
+  * Granularidade: Um registro por cliente por dia
+  
+- [bronze].[xp_rpa_clientes]: Dados cadastrais e perfil
+  * Campos: cod_xp, fee_based, suitability, tipo_investidor, segmento, cpf_cnpj
+  * Volume: ~50.000 registros
+  * Uso: Dados mais recentes por cliente (ROW_NUMBER)
+  
+- [bronze].[xp_open_investment_extrato]: Patrimônio Open Investment
+  * Campos: cod_conta, valor_bruto
+  * Volume: Variável
+  * Uso: Soma por cliente
+
+Funções/CTEs utilizadas:
+- primeira_aparicao: Identifica entrada do cliente no positivador
+- rpa_dados: Dados mais recentes do RPA por cliente
+- patrimonio_open: Soma patrimônio Open Investment
+- ROW_NUMBER(): Para pegar registro mais recente do RPA
+- DATEDIFF/CEILING: Cálculo de meses como cliente
+- FORMAT: Formatação de datas
+
+Pré-requisitos:
+- Tabelas bronze devem estar atualizadas
+- Índices recomendados:
+  * bronze.xp_positivador (cod_xp, data_ref)
+  * bronze.xp_rpa_clientes (cod_xp, data_carga)
+  * bronze.xp_open_investment_extrato (cod_conta)
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
+-- ==============================================================================
+-- 6. CRIAÇÃO DA VIEW
+-- ==============================================================================
 CREATE   VIEW [silver].[vw_fact_cliente_perfil_historico] AS
 
 WITH 
@@ -173,3 +290,105 @@ LEFT JOIN rpa_dados rpa
 LEFT JOIN patrimonio_open po
     ON pos.cod_xp = po.cod_conta
 GO
+
+-- ==============================================================================
+-- 7. QUERIES AUXILIARES (PARA VALIDAÇÃO)
+-- ==============================================================================
+/*
+-- Query para verificar volume de dados
+SELECT 
+    COUNT(*) as total_registros,
+    COUNT(DISTINCT conta_xp_cliente) as total_clientes,
+    MIN(data_ref) as data_inicial,
+    MAX(data_ref) as data_final
+FROM silver.vw_fact_cliente_perfil_historico;
+
+-- Query para verificar share of wallet médio
+SELECT 
+    CASE 
+        WHEN share_of_wallet = 0 THEN '0%'
+        WHEN share_of_wallet <= 0.25 THEN '1-25%'
+        WHEN share_of_wallet <= 0.50 THEN '26-50%'
+        WHEN share_of_wallet <= 0.75 THEN '51-75%'
+        WHEN share_of_wallet <= 1.00 THEN '76-100%'
+        ELSE 'Acima de 100%'
+    END as faixa_share_wallet,
+    COUNT(*) as quantidade,
+    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 2) as percentual
+FROM silver.vw_fact_cliente_perfil_historico
+WHERE share_of_wallet IS NOT NULL
+    AND data_ref = EOMONTH(GETDATE(), -1)
+GROUP BY 
+    CASE 
+        WHEN share_of_wallet = 0 THEN '0%'
+        WHEN share_of_wallet <= 0.25 THEN '1-25%'
+        WHEN share_of_wallet <= 0.50 THEN '26-50%'
+        WHEN share_of_wallet <= 0.75 THEN '51-75%'
+        WHEN share_of_wallet <= 1.00 THEN '76-100%'
+        ELSE 'Acima de 100%'
+    END
+ORDER BY 
+    CASE 
+        WHEN share_of_wallet = 0 THEN 1
+        WHEN share_of_wallet <= 0.25 THEN 2
+        WHEN share_of_wallet <= 0.50 THEN 3
+        WHEN share_of_wallet <= 0.75 THEN 4
+        WHEN share_of_wallet <= 1.00 THEN 5
+        ELSE 6
+    END;
+
+-- Query para análise de safras
+SELECT 
+    safra_cliente_m7,
+    COUNT(DISTINCT conta_xp_cliente) as qtd_clientes,
+    AVG(meses_cliente_m7) as media_meses_cliente,
+    SUM(CASE WHEN status_cliente = 'ATIVO' THEN 1 ELSE 0 END) as clientes_ativos,
+    ROUND(100.0 * SUM(CASE WHEN status_cliente = 'ATIVO' THEN 1 ELSE 0 END) / COUNT(*), 2) as taxa_retencao
+FROM silver.vw_fact_cliente_perfil_historico
+WHERE data_ref = EOMONTH(GETDATE(), -1)
+GROUP BY safra_cliente_m7
+ORDER BY safra_cliente_m7 DESC;
+*/
+
+-- ==============================================================================
+-- 8. HISTÓRICO DE MUDANÇAS
+-- ==============================================================================
+/*
+Versão  | Data       | Autor           | Descrição
+--------|------------|-----------------|--------------------------------------------
+1.0.0   | 2025-01-20 | [Nome]         | Criação inicial da view
+
+*/
+
+-- ==============================================================================
+-- 9. NOTAS E OBSERVAÇÕES
+-- ==============================================================================
+/*
+Notas importantes:
+- View une dados de 3 tabelas bronze para criar visão consolidada
+- Share of wallet limitado a 100% quando patrimônio XP > declarado
+- Segmento apenas para PJ (identifica por CNPJ)
+- Faixa etária calcula idade precisa considerando mês/dia
+- Safra baseada na primeira aparição no positivador
+- Para clientes do primeiro dia (2023-08-09), usa data_cadastro como safra
+- Meses como cliente arredondados para cima (CEILING)
+- Performance pode ser impactada pelo volume do positivador (~7M registros)
+
+Regras de negócio:
+1. Share of Wallet = patrimonio_xp / patrimonio_declarado
+2. Se patrimônio declarado <= 0, share é NULL
+3. Se patrimônio XP = 0, share é 0
+4. Se patrimônio XP > declarado, share é 1 (100%)
+5. Fee Based identificado por rpa.fee_based = 'ATIVO'
+6. Segmento apenas para CNPJ (14 dígitos)
+7. Status ATIVO quando status_cliente = 1 (bit)
+
+Possíveis melhorias:
+1. Criar índices sugeridos nas tabelas bronze
+2. Materializar em tabela física para melhor performance
+3. Adicionar filtros de data para reduzir volume processado
+4. Considerar particionamento do positivador por data
+5. Adicionar tratamento para casos especiais de share > 100%
+
+Contato para dúvidas: [equipe-dados@m7investimentos.com.br]
+*/
