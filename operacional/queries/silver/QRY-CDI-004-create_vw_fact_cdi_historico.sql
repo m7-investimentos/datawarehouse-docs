@@ -1,21 +1,124 @@
+-- ==============================================================================
+-- QRY-CDI-004-create_vw_fact_cdi_historico
+-- ==============================================================================
+-- Tipo: DDL - CREATE VIEW
+-- Versão: 1.0.0
+-- Última atualização: 2024-11-28
+-- Autor: [nome.sobrenome@m7investimentos.com.br]
+-- Revisor: [nome.sobrenome@m7investimentos.com.br]
+-- Tags: [view, cdi, taxa, histórico, janela móvel, silver]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
+-- Schema: silver
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: View que calcula taxas CDI acumuladas em diferentes períodos (mensal, 
+trimestral, semestral, anual e janelas móveis de 3, 6 e 12 meses). Utiliza 
+cálculo composto considerando os dias úteis dentro de cada período.
+
+Casos de uso:
+- Análise de rentabilidade comparada ao CDI
+- Cálculo de benchmarks para produtos financeiros
+- Relatórios de performance de investimentos
+- Análises de séries temporais de taxas
+
+Frequência de execução: Sob demanda
+Tempo médio de execução: ~2-3 segundos
+Volume esperado de linhas: ~7.000 registros (dados diários)
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Não aplicável - View sem parâmetros
+
+Para filtrar períodos específicos, usar WHERE na consulta:
+SELECT * FROM silver.vw_fact_cdi_historico 
+WHERE data_ref BETWEEN '2024-01-01' AND '2024-12-31'
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+Colunas retornadas:
+
+| Coluna              | Tipo          | Descrição                           | Exemplo           |
+|---------------------|---------------|-------------------------------------|-------------------|
+| data_ref            | DATE          | Data de referência                  | 2024-03-15        |
+| ano_mes             | VARCHAR(6)    | Ano e mês (YYYYMM)                  | 202403            |
+| ano                 | INT           | Ano                                 | 2024              |
+| mes_num             | INT           | Número do mês                       | 3                 |
+| trimestre           | CHAR(2)       | Trimestre (Q1-Q4)                   | Q1                |
+| semestre            | CHAR(2)       | Semestre (S1-S2)                    | S1                |
+| taxa_cdi_dia        | DECIMAL(18,8) | Taxa CDI do dia (decimal)           | 0.00039890        |
+| taxa_cdi_mes        | DECIMAL(18,8) | Taxa acumulada do mês               | 0.00850000        |
+| taxa_cdi_3_meses    | DECIMAL(18,8) | Taxa acumulada 3 meses (móvel)      | 0.02550000        |
+| taxa_cdi_6_meses    | DECIMAL(18,8) | Taxa acumulada 6 meses (móvel)      | 0.05100000        |
+| taxa_cdi_12_meses   | DECIMAL(18,8) | Taxa acumulada 12 meses (móvel)     | 0.10250000        |
+| taxa_cdi_trimestre  | DECIMAL(18,8) | Taxa acumulada do trimestre         | 0.02550000        |
+| taxa_cdi_semestre   | DECIMAL(18,8) | Taxa acumulada do semestre          | 0.05100000        |
+| taxa_cdi_ano        | DECIMAL(18,8) | Taxa acumulada do ano               | 0.10250000        |
+
+Ordenação padrão: data_ref ASC
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas/Views utilizadas:
+- bronze.bc_cdi_historico: Tabela fonte com taxas CDI diárias do Banco Central
+
+Funções/Procedures chamadas:
+- LAG(): Para acessar valores anteriores no cálculo acumulado
+- ROW_NUMBER(): Para numerar dias dentro do mês
+- COALESCE(): Tratamento de valores nulos
+
+Pré-requisitos:
+- Tabela bronze.bc_cdi_historico deve estar atualizada
+- Índice em bronze.bc_cdi_historico.data_ref para performance
+- Dados devem estar completos (sem gaps de dias úteis)
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE   VIEW [silver].[vw_fact_cdi_historico]
+
+-- ==============================================================================
+-- 6. CRIAÇÃO DA VIEW
+-- ==============================================================================
+CREATE VIEW [silver].[vw_fact_cdi_historico]
 AS
-WITH CTE_dias_numerados AS (
-    -- Numera os dias dentro de cada mês
+WITH 
+-- -----------------------------------------------------------------------------
+-- CTE: dias_numerados
+-- Descrição: Numera os dias dentro de cada mês para controle do cálculo
+-- -----------------------------------------------------------------------------
+CTE_dias_numerados AS (
     SELECT 
         data_ref,
         YEAR(data_ref) AS ano,
         MONTH(data_ref) AS mes_num,
-        taxa_cdi / 100.0 AS taxa_cdi_dia,
+        taxa_cdi / 100.0 AS taxa_cdi_dia,  -- Converte percentual para decimal
         ROW_NUMBER() OVER (PARTITION BY YEAR(data_ref), MONTH(data_ref) ORDER BY data_ref) AS dia_no_mes
     FROM [bronze].[bc_cdi_historico]
 ),
+
+-- -----------------------------------------------------------------------------
+-- CTE: com_lags_diarios
+-- Descrição: Cria LAGs para cada dia do mês (até 22 dias úteis)
+-- -----------------------------------------------------------------------------
 CTE_com_lags_diarios AS (
-    -- Cria LAGs para cada dia do mês
     SELECT 
         *,
         LAG(taxa_cdi_dia, 1) OVER (PARTITION BY ano, mes_num ORDER BY data_ref) AS lag1,
@@ -42,14 +145,19 @@ CTE_com_lags_diarios AS (
         LAG(taxa_cdi_dia, 22) OVER (PARTITION BY ano, mes_num ORDER BY data_ref) AS lag22
     FROM CTE_dias_numerados
 ),
+
+-- -----------------------------------------------------------------------------
+-- CTE: dias_para_mes
+-- Descrição: Calcula taxa acumulada do mês usando produto dos fatores diários
+-- -----------------------------------------------------------------------------
 CTE_dias_para_mes AS (
-    -- Calcula a taxa acumulada do mês usando CASE
     SELECT 
         data_ref,
         ano,
         mes_num,
         taxa_cdi_dia,
         
+        -- Cálculo acumulado baseado no dia do mês
         CASE dia_no_mes
             WHEN 1 THEN taxa_cdi_dia
             WHEN 2 THEN ((1 + taxa_cdi_dia) * (1 + COALESCE(lag1, 0))) - 1
@@ -78,8 +186,12 @@ CTE_dias_para_mes AS (
         
     FROM CTE_com_lags_diarios
 ),
+
+-- -----------------------------------------------------------------------------
+-- CTE: mes_final
+-- Descrição: Extrai apenas o último dia de cada mês (taxa mensal completa)
+-- -----------------------------------------------------------------------------
 CTE_mes_final AS (
-    -- Pega apenas o último dia de cada mês (que tem a taxa mensal completa)
     SELECT 
         ano,
         mes_num,
@@ -88,8 +200,12 @@ CTE_mes_final AS (
     FROM CTE_dias_para_mes
     GROUP BY ano, mes_num
 ),
+
+-- -----------------------------------------------------------------------------
+-- CTE: base_mensal
+-- Descrição: Prepara base mensal com identificadores de período
+-- -----------------------------------------------------------------------------
 CTE_base_mensal AS (
-    -- Base mensal para cálculos acumulados
     SELECT 
         ano,
         mes_num,
@@ -114,6 +230,11 @@ CTE_base_mensal AS (
         
     FROM CTE_mes_final
 ),
+
+-- -----------------------------------------------------------------------------
+-- CTE: com_acumulados
+-- Descrição: Calcula taxas acumuladas para diferentes períodos
+-- -----------------------------------------------------------------------------
 CTE_com_acumulados AS (
     SELECT 
         *,
@@ -338,6 +459,10 @@ CTE_com_acumulados AS (
         
     FROM CTE_base_mensal
 )
+
+-- ==============================================================================
+-- 7. QUERY PRINCIPAL
+-- ==============================================================================
 -- JOIN final para trazer os dados diários junto com os cálculos mensais
 SELECT 
     d.data_ref,
@@ -364,3 +489,72 @@ INNER JOIN CTE_com_acumulados m
     ON YEAR(d.data_ref) = m.ano 
     AND MONTH(d.data_ref) = m.mes_num
 GO
+
+-- ==============================================================================
+-- 8. QUERIES AUXILIARES (PARA VALIDAÇÃO)
+-- ==============================================================================
+/*
+-- Query para verificar últimas taxas CDI
+SELECT TOP 10
+    data_ref,
+    taxa_cdi_dia,
+    taxa_cdi_mes,
+    taxa_cdi_12_meses
+FROM silver.vw_fact_cdi_historico
+ORDER BY data_ref DESC;
+
+-- Query para validar cálculo acumulado mensal
+SELECT 
+    ano_mes,
+    COUNT(*) as dias_uteis,
+    MIN(data_ref) as primeiro_dia,
+    MAX(data_ref) as ultimo_dia,
+    MAX(taxa_cdi_mes) as taxa_mes_acumulada
+FROM silver.vw_fact_cdi_historico
+WHERE data_ref >= '2024-01-01'
+GROUP BY ano_mes
+ORDER BY ano_mes DESC;
+
+-- Query para comparar janelas móveis
+SELECT 
+    data_ref,
+    taxa_cdi_3_meses,
+    taxa_cdi_6_meses,
+    taxa_cdi_12_meses
+FROM silver.vw_fact_cdi_historico
+WHERE DAY(data_ref) = DAY(EOMONTH(data_ref))  -- Último dia do mês
+    AND data_ref >= '2023-01-01'
+ORDER BY data_ref DESC;
+*/
+
+-- ==============================================================================
+-- 9. HISTÓRICO DE MUDANÇAS
+-- ==============================================================================
+/*
+Versão  | Data       | Autor           | Descrição
+--------|------------|-----------------|--------------------------------------------
+1.0.0   | 2024-11-28 | [Nome]         | Criação inicial da view
+
+*/
+
+-- ==============================================================================
+-- 10. NOTAS E OBSERVAÇÕES
+-- ==============================================================================
+/*
+Notas importantes:
+- A view utiliza cálculo composto (juros sobre juros) para taxas acumuladas
+- Considera apenas dias úteis (dados presentes na tabela bronze)
+- LAG functions limitadas a 22 dias úteis por mês (máximo histórico)
+- Performance pode ser impactada em consultas de períodos muito longos
+- Janelas móveis (3, 6, 12 meses) calculadas sobre meses completos
+
+Troubleshooting comum:
+1. Valores NULL em taxas acumuladas: Verificar se há dados suficientes no período anterior
+2. Performance lenta: Criar índice em bronze.bc_cdi_historico.data_ref
+3. Divergência de cálculo: Verificar se todos os dias úteis estão presentes na bronze
+
+Fórmula de cálculo:
+Taxa Acumulada = [(1 + Taxa1) × (1 + Taxa2) × ... × (1 + TaxaN)] - 1
+
+Contato para dúvidas: [equipe-dados@m7investimentos.com.br]
+*/
