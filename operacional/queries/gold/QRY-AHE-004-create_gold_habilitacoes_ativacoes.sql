@@ -1,7 +1,79 @@
+-- ==============================================================================
+-- QRY-AHE-004-create_gold_habilitacoes_ativacoes
+-- ==============================================================================
+-- Tipo: CREATE TABLE
+-- Versão: 1.0.0
+-- Última atualização: 2025-01-20
+-- Autor: [equipe.dados@m7investimentos.com.br]
+-- Revisor: [revisor@m7investimentos.com.br]
+-- Tags: [habilitacoes, ativacoes, assessor, performance, gold]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
+-- Schema: gold
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: Cria a tabela física para armazenar dados consolidados mensais de 
+habilitações e ativações por assessor. Esta tabela materializa os dados da view
+vw_habilitacoes_ativacoes para melhor performance em consultas.
+
+Casos de uso:
+- Relatórios mensais de performance de assessores
+- Dashboard de acompanhamento de metas de habilitações/ativações
+- Análise de tendências por segmento de patrimônio (acima/abaixo R$ 300k)
+- Base para cálculo de indicadores de esforço comercial
+
+Frequência de atualização: Diária (via procedure prc_gold_habilitacoes_ativacoes)
+Volume esperado de linhas: ~2.000 registros/mês (1 por assessor ativo)
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Não aplicável - Script DDL de criação de tabela
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+Tabela criada: gold.habilitacoes_ativacoes
+
+Chave primária composta:
+- ano_mes: AAAAMM de referência
+- cod_assessor: Código único do assessor
+
+Particionamento: Não aplicado
+Índices: PK clustered em (ano_mes, cod_assessor)
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas/Views utilizadas:
+- gold.vw_habilitacoes_ativacoes: View que consolida os dados (populada via procedure)
+
+Pré-requisitos:
+- Schema gold deve existir
+- Permissões CREATE TABLE no schema gold
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
+-- ==============================================================================
+-- 6. CRIAÇÃO DA TABELA
+-- ==============================================================================
 CREATE TABLE [gold].[habilitacoes_ativacoes](
 	[ano_mes] [int] NOT NULL,
 	[ano] [int] NOT NULL,
@@ -44,7 +116,7 @@ CREATE TABLE [gold].[habilitacoes_ativacoes](
 	[qtd_habilitacoes_300k_mais_12_meses] [int] NOT NULL,
 	[qtd_habilitacoes_300k_menos_12_meses] [int] NOT NULL,
 	[data_carga] [date] NOT NULL,
- CONSTRAINT [PK_indice_esforco_assessor] PRIMARY KEY CLUSTERED 
+ CONSTRAINT [PK_habilitacoes_ativacoes] PRIMARY KEY CLUSTERED 
 (
 	[ano_mes] ASC,
 	[cod_assessor] ASC
@@ -193,3 +265,47 @@ EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Data em que os
 GO
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Tabela consolidada mensal de habilitações e ativações por assessor. Contém métricas agregadas por período (mensal, trimestral, semestral, anual) e janelas móveis (3, 6, 12 meses), segmentadas por valor de patrimônio (acima/abaixo de R$ 300k). Utilizada para análise de performance e acompanhamento de metas dos assessores comerciais.' , @level0type=N'SCHEMA',@level0name=N'gold', @level1type=N'TABLE',@level1name=N'habilitacoes_ativacoes'
 GO
+
+-- ==============================================================================
+-- 7. DEFAULTS E CONSTRAINTS
+-- ==============================================================================
+-- Os valores default foram definidos como 0 para todas as métricas de quantidade
+-- para garantir que não haja valores NULL em cálculos e agregações.
+-- A data_carga tem default GETDATE() para registrar automaticamente quando 
+-- os dados foram inseridos.
+
+-- ==============================================================================
+-- 8. EXTENDED PROPERTIES (DOCUMENTAÇÃO)
+-- ==============================================================================
+-- As extended properties foram adicionadas para documentar cada coluna e a tabela
+-- no catálogo do SQL Server. Isso facilita o entendimento do modelo por outros
+-- desenvolvedores e ferramentas de documentação automática.
+
+-- ==============================================================================
+-- 9. HISTÓRICO DE MUDANÇAS
+-- ==============================================================================
+/*
+Versão  | Data       | Autor                | Descrição
+--------|------------|---------------------|--------------------------------------------
+1.0.0   | 2025-01-20 | equipe.dados        | Criação inicial da tabela
+
+*/
+
+-- ==============================================================================
+-- 10. NOTAS E OBSERVAÇÕES
+-- ==============================================================================
+/*
+Notas importantes:
+- Esta tabela é truncada e recarregada diariamente via procedure prc_gold_habilitacoes_ativacoes
+- O nome da constraint PK foi corrigido (estava como PK_indice_esforco_assessor)
+- As métricas são segmentadas pelo valor de patrimônio de R$ 300.000
+- Janelas móveis incluem o mês atual no cálculo
+- Dados históricos são preservados (não há delete, apenas truncate/insert)
+
+Troubleshooting comum:
+1. Erro de PK duplicada: Verificar se há duplicação de assessor no mesmo período
+2. Valores zerados: Normal para assessores sem movimentação no período
+3. Performance lenta: Verificar estatísticas e fragmentação do índice clustered
+
+Contato para dúvidas: equipe-dados@m7investimentos.com.br
+*/

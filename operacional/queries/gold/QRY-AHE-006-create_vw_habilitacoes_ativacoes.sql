@@ -1,7 +1,96 @@
+-- ==============================================================================
+-- QRY-AHE-006-create_vw_habilitacoes_ativacoes
+-- ==============================================================================
+-- Tipo: CREATE VIEW
+-- Versão: 1.0.0
+-- Última atualização: 2025-01-20
+-- Autor: [equipe.dados@m7investimentos.com.br]
+-- Revisor: [revisor@m7investimentos.com.br]
+-- Tags: [habilitacoes, ativacoes, assessor, consolidacao, gold]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
+-- Schema: gold
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: View que consolida dados de habilitações e ativações por assessor,
+calculando métricas mensais e acumulados por diferentes períodos (trimestre, 
+semestre, ano) e janelas móveis (3, 6, 12 meses). Segmenta por valor de 
+patrimônio (acima/abaixo de R$ 300k).
+
+Casos de uso:
+- Base para tabela materializada gold.habilitacoes_ativacoes
+- Consultas ad-hoc para análise de tendências
+- Validação de dados antes da materialização
+- Fonte para dashboards em tempo real
+
+Frequência de consulta: Várias vezes ao dia
+Tempo médio de execução: 2-3 minutos (sem materialização)
+Volume de dados: ~24.000 registros
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Não aplicável - View processa todos os dados disponíveis
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+| Coluna                                   | Tipo         | Descrição                                           |
+|------------------------------------------|--------------|-----------------------------------------------------|
+| ano_mes                                  | INT          | Período no formato AAAAMM                          |
+| ano                                      | INT          | Ano de referência                                  |
+| mes                                      | INT          | Mês de referência (1-12)                          |
+| nome_mes                                 | VARCHAR(20)  | Nome do mês em inglês                             |
+| trimestre                                | VARCHAR(2)   | Trimestre (Q1-Q4)                                   |
+| semestre                                 | VARCHAR(2)   | Semestre (S1-S2)                                    |
+| cod_assessor                             | VARCHAR(20)  | Código do assessor (cod_aai)                       |
+| crm_id_assessor                          | VARCHAR(20)  | ID do assessor no CRM                              |
+| nome_assessor                            | VARCHAR(200) | Nome completo do assessor                          |
+| nivel_assessor                           | VARCHAR(50)  | Nível hierárquico                                  |
+| estrutura_id                             | INT          | ID da estrutura organizacional                     |
+| estrutura_nome                           | VARCHAR(100) | Nome da estrutura                                  |
+| qtd_ativacoes_300k_mais                  | INT          | Ativações mensais > 300k                           |
+| qtd_ativacoes_300k_menos                 | INT          | Ativações mensais <= 300k                          |
+| qtd_habilitacoes_300k_mais               | INT          | Habilitações mensais > 300k                        |
+| qtd_habilitacoes_300k_menos              | INT          | Habilitações mensais <= 300k                       |
+| [métricas acumuladas e janelas móveis]   | INT          | Totais por período e janelas                       |
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas/Views utilizadas:
+- silver.fact_ativacoes_habilitacoes_evasoes: Fatos de movimentações de clientes
+- silver.fact_estrutura_pessoas: Histórico de alocação de pessoas em estruturas
+- silver.dim_calendario: Dimensão de datas
+- silver.dim_pessoas: Cadastro de pessoas (assessores)
+- silver.dim_estruturas: Cadastro de estruturas organizacionais
+
+Pré-requisitos:
+- Dados atualizados nas tabelas silver
+- Índices adequados para performance dos JOINs
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
+-- ==============================================================================
+-- 6. CRIAÇÃO DA VIEW COM CTEs
+-- ==============================================================================
 CREATE   VIEW [gold].[vw_habilitacoes_ativacoes] AS
 
 WITH 
@@ -280,3 +369,78 @@ SELECT
     
 FROM janelas_moveis;
 GO
+
+-- ==============================================================================
+-- 7. CONSIDERAÇÕES TÉCNICAS
+-- ==============================================================================
+/*
+- CTEs utilizadas para modularizar a lógica complexa:
+  1. base_mensal: Agregação inicial por mês/assessor/estrutura
+  2. dados_enriquecidos: Adiciona dimensões e metadados
+  3. acumulados_periodo: Calcula totais por trimestre/semestre/ano
+  4. janelas_moveis: Calcula janelas de 3/6/12 meses
+
+- JOINs com estrutura vigente consideram data_entrada/data_saida
+- COALESCE utilizado para garantir valores default (0) em métricas
+- Window functions evitadas em favor de self-joins para melhor performance
+*/
+
+-- ==============================================================================
+-- 8. QUERIES AUXILIARES PARA VALIDAÇÃO
+-- ==============================================================================
+/*
+-- Verificar quantidade de registros por período
+SELECT 
+    ano_mes,
+    COUNT(DISTINCT cod_assessor) as qtd_assessores,
+    SUM(qtd_ativacoes_300k_mais + qtd_ativacoes_300k_menos) as total_ativacoes,
+    SUM(qtd_habilitacoes_300k_mais + qtd_habilitacoes_300k_menos) as total_habilitacoes
+FROM gold.vw_habilitacoes_ativacoes
+GROUP BY ano_mes
+ORDER BY ano_mes DESC;
+
+-- Validar consistência de acumulados
+SELECT TOP 10
+    cod_assessor,
+    nome_assessor,
+    ano_mes,
+    qtd_ativacoes_300k_mais,
+    qtd_ativacoes_300k_mais_trimestre,
+    qtd_ativacoes_300k_mais_ano
+FROM gold.vw_habilitacoes_ativacoes
+WHERE ano_mes = (SELECT MAX(ano_mes) FROM gold.vw_habilitacoes_ativacoes)
+ORDER BY qtd_ativacoes_300k_mais_ano DESC;
+*/
+
+-- ==============================================================================
+-- 9. HISTÓRICO DE MUDANÇAS
+-- ==============================================================================
+/*
+Versão  | Data       | Autor           | Descrição
+--------|------------|-----------------|--------------------------------------------
+1.0.0   | 2025-01-20 | equipe.dados   | Criação inicial da view
+
+*/
+
+-- ==============================================================================
+-- 10. NOTAS E OBSERVAÇÕES
+-- ==============================================================================
+/*
+Notas importantes:
+- View utiliza cod_aai da dim_pessoas como cod_assessor (não o crm_id)
+- Estrutura vigente é determinada pela data do evento (data_ref)
+- Segmentação por patrimônio usa faixa_pl = 'ate 300k' como critério
+- Janelas móveis incluem o mês atual no cálculo
+- Performance pode ser impactada com grandes volumes - usar tabela materializada
+
+Otimizações recomendadas:
+- Índice em fact_ativacoes_habilitacoes_evasoes (crm_id, data_ref, tipo_movimentacao)
+- Índice em fact_estrutura_pessoas (crm_id, data_entrada, data_saida)
+- Estatísticas atualizadas nas tabelas base
+
+Limitações conhecidas:
+- Não processa assessores sem nenhuma movimentação no período
+- Janelas móveis podem ter dados incompletos nos primeiros meses
+
+Contato para dúvidas: equipe-dados@m7investimentos.com.br
+*/
