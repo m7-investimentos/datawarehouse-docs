@@ -45,8 +45,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 # ==============================================================================
 
 # IDs e Ranges do Google Sheets
-SPREADSHEET_ID = '18AJfFeOOKNvCEdz9qS6xAJNUKoAzJAE1QCa7KK88vQE'
-RANGE_NAME = 'Indicators!A:Z'
+SPREADSHEET_ID = '1h3jC5EpXOv-O1oyL2tBlt9Q16pLHpsoWCHaeNiRHmeY'
+RANGE_NAME = 'Página1!A:K'
 
 # Caminhos
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -406,17 +406,17 @@ class IndicatorsETL:
                     '1' if str(x).upper() in ['TRUE', '1', 'SIM', 'YES'] else '0'
                 )
         
+        # Adicionar número da linha original na planilha
+        df['row_number'] = range(2, len(df) + 2)  # Começa em 2 (pula header)
+        
         # Gerar hash do registro para detecção de mudanças
-        df['record_hash'] = df.apply(
+        df['row_hash'] = df.apply(
             lambda row: pd.util.hash_pandas_object(
                 row[['indicator_code', 'indicator_name', 'category', 'unit']], 
                 index=False
             )[0], 
             axis=1
         ).astype(str)
-        
-        # Adicionar ID único
-        df['load_id'] = int(datetime.now().timestamp())
         
         self.processed_data = df
         self.logger.info(f"Transformações aplicadas. {len(df)} registros prontos para carga")
@@ -454,6 +454,10 @@ class IndicatorsETL:
                 
                 # Preparar dados para carga
                 load_data = self.processed_data.copy()
+                
+                # Remover created_date se existir (não faz parte do Bronze)
+                if 'created_date' in load_data.columns:
+                    load_data = load_data.drop(columns=['created_date'])
                 
                 # Adicionar campos de controle
                 load_data['load_timestamp'] = datetime.now()
