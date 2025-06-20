@@ -1,21 +1,119 @@
+-- ==============================================================================
+-- QRY-RNT-003-prc_bronze_to_silver_fact_rentabilidade_clientes
+-- ==============================================================================
+-- Tipo: PROCEDURE
+-- Versão: 1.0.0
+-- Última atualização: 2024-11-28
+-- Autor: [nome.sobrenome@m7investimentos.com.br]
+-- Revisor: [nome.sobrenome@m7investimentos.com.br]
+-- Tags: [etl, bronze-to-silver, rentabilidade, performance]
+-- Status: produção
+-- Banco de Dados: SQL Server 2016+
+-- Schema: silver
+-- ==============================================================================
+
+-- ==============================================================================
+-- 1. OBJETIVO
+-- ==============================================================================
+/*
+Descrição: Procedure responsável por processar e carregar dados de rentabilidade
+da camada bronze para a camada silver. Utiliza uma view intermediária que já 
+realiza todos os cálculos complexos de rentabilidade acumulada. Implementa 
+mecanismo de preservação de dados históricos que não existem mais na fonte.
+
+Casos de uso:
+- Carga diária de dados de rentabilidade processados
+- Preservação automática de dados históricos
+- Cálculo de rentabilidades acumuladas via view
+- Atualização completa com tratamento transacional
+- Logging detalhado para auditoria
+
+Frequência de execução: Diária (preferencialmente após 7h da manhã)
+Tempo médio de execução: 30-60 segundos
+Volume esperado de linhas: ~50.000 registros ativos + histórico
+*/
+
+-- ==============================================================================
+-- 2. PARÂMETROS DE ENTRADA
+-- ==============================================================================
+/*
+Nenhum parâmetro de entrada - Procedure processa todos os dados disponíveis
+na view vw_fact_rentabilidade_clientes realizando carga completa com preservação
+de histórico
+*/
+
+-- ==============================================================================
+-- 3. ESTRUTURA DE SAÍDA
+-- ==============================================================================
+/*
+Tabela de destino: [silver].[fact_rentabilidade_clientes]
+
+Fluxo de processamento:
+1. Identifica e preserva dados históricos em tabela temporária
+2. Trunca tabela silver (limpeza completa)
+3. Carrega dados atuais da view com cálculos já processados
+4. Restaura dados históricos preservados
+5. Registra estatísticas e logs de execução
+
+Dados preservados:
+- Registros de períodos (ano_mes) que não existem mais na view
+- Mantém data_carga original para rastreabilidade
+*/
+
+-- ==============================================================================
+-- 4. DEPENDÊNCIAS
+-- ==============================================================================
+/*
+Tabelas/Views utilizadas:
+- silver.vw_fact_rentabilidade_clientes: View com cálculos de rentabilidade
+- silver.fact_rentabilidade_clientes: Tabela de destino e fonte de histórico
+- #temp_historico: Tabela temporária para preservação de dados
+
+Funções/Procedures chamadas:
+- Nenhuma
+
+Pré-requisitos:
+- View vw_fact_rentabilidade_clientes deve estar atualizada
+- Tabela silver.fact_rentabilidade_clientes deve existir
+- Permissões de TRUNCATE e INSERT na tabela de destino
+- TempDB com espaço suficiente para tabela temporária
+*/
+
+-- ==============================================================================
+-- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
+-- ==============================================================================
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
+-- ==============================================================================
+-- 6. CRIAÇÃO DA PROCEDURE
+-- ==============================================================================
 CREATE   PROCEDURE [silver].[prc_bronze_to_silver_fact_rentabilidade_clientes]
 AS
 BEGIN
     SET NOCOUNT ON;
     
+    -- ==============================================================================
+    -- 7. TRATAMENTO DE ERROS E TRANSAÇÕES
+    -- ==============================================================================
     BEGIN TRY
         BEGIN TRANSACTION;
         
+        -- ==============================================================================
+        -- 8. VARIÁVEIS DE CONTROLE
+        -- ==============================================================================
         -- Declaração de variáveis para controle
         DECLARE @RowsPreserved INT = 0;
         DECLARE @RowsInserted INT = 0;
         DECLARE @StartTime DATETIME = GETDATE();
         
-        -- 1. Criar tabela temporária para preservar dados históricos
+        -- ==============================================================================
+        -- 9. LÓGICA DE PROCESSAMENTO
+        -- ==============================================================================
+        
+        -- 9.1. Criar tabela temporária para preservar dados históricos
         -- que não existem mais na view (dados de anos anteriores que saíram do relatório)
         DROP TABLE IF EXISTS #temp_historico;
         
