@@ -62,10 +62,10 @@ etl_metas_google/
 
 3. **Configurar variáveis de ambiente (.env):**
    ```bash
-   DB_SERVER=172.17.0.10
+   DB_SERVER=IP
    DB_DATABASE=M7Medallion
-   DB_USERNAME=m7invest
-   DB_PASSWORD=!@Multi19732846
+   DB_USERNAME=nome_de_usuario
+   DB_PASSWORD=senha
    DB_DRIVER=ODBC Driver 17 for SQL Server
    ```
 
