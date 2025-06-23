@@ -53,6 +53,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# Configurar encoding UTF-8 para evitar problemas com caracteres especiais
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 # ==============================================================================
 # 2. CONFIGURAÇÕES E CONSTANTES
 # ==============================================================================
@@ -118,7 +124,7 @@ def setup_logging(log_file: Optional[str] = None) -> logging.Logger:
     
     # Handler para arquivo
     if log_file:
-        file_handler = logging.FileHandler(LOG_DIR / log_file)
+        file_handler = logging.FileHandler(LOG_DIR / log_file, encoding='utf-8')
         file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
         logger.addHandler(file_handler)
     
@@ -212,8 +218,8 @@ class ETLOrchestrator:
         
         try:
             # Construir comando
-            # Usar Python 3.11
-            python_cmd = '/opt/homebrew/bin/python3.11' if os.path.exists('/opt/homebrew/bin/python3.11') else 'python3.11'
+            # Usar o mesmo Python que está executando este script
+            python_cmd = sys.executable
             cmd = [python_cmd, etl['script']]
             
             if self.debug:
@@ -332,7 +338,7 @@ class ETLOrchestrator:
         # Detalhes por ETL
         self.logger.info("\nDetalhes por ETL:")
         for etl_id, result in self.results.items():
-            status_symbol = "✓" if result['status'] == 'SUCCESS' else "✗"
+            status_symbol = "[OK]" if result['status'] == 'SUCCESS' else "[ERRO]"
             self.logger.info(f"  {status_symbol} ETL-{etl_id}: {result['status']} ({result.get('duration', 0):.2f}s)")
             if result['status'] == 'ERROR':
                 self.logger.info(f"    Erro: {result['message'][:100]}...")

@@ -2,27 +2,27 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-Pipeline Completo - ETLs + Procedures Bronze to Silver
+Pipeline ETL - Google Sheets para Bronze
 ================================================================================
 Tipo: Script Pipeline
-Versão: 1.0.0
-Última atualização: 2025-01-17
+Versão: 2.0.0
+Última atualização: 2025-01-23
 Autor: bruno.chiaramonti@multisete.com
 Revisor: arquitetura.dados@m7investimentos.com.br
-Tags: [pipeline, etl, procedures, bronze, silver]
+Tags: [pipeline, etl, bronze, google-sheets]
 Status: produção
 Python: 3.8+
 ================================================================================
 
 OBJETIVO:
-    Executar o pipeline completo de performance:
-    1. ETLs do Google Sheets para Bronze
-    2. Procedures de Bronze para Silver
+    Executar ETLs do Google Sheets para Bronze com gerenciamento de 
+    dependências e logging detalhado.
 
 CASOS DE USO:
     1. Execução diária automatizada completa
     2. Reprocessamento após mudanças estruturais
     3. Sincronização completa manual
+    4. Execução de ETLs específicos
 
 EXEMPLOS DE USO:
     # Execução padrão
@@ -31,11 +31,11 @@ EXEMPLOS DE USO:
     # Modo debug
     python run_full_pipeline.py --debug
     
-    # Apenas ETLs (sem procedures)
-    python run_full_pipeline.py --only-etls
+    # Executar apenas ETLs específicos
+    python run_full_pipeline.py --only-etl 001 002
     
-    # Apenas procedures (sem ETLs)
-    python run_full_pipeline.py --only-procedures
+    # Dry run (sem carga no banco)
+    python run_full_pipeline.py --dry-run
 """
 
 # ==============================================================================
@@ -51,6 +51,25 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import pyodbc
 from dotenv import load_dotenv
+
+# Configurar encoding UTF-8 para evitar problemas com caracteres especiais
+import locale
+import codecs
+
+# Forçar UTF-8 no Windows
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+# Configurar locale para UTF-8 quando possível
+try:
+    locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_ALL, '')
+    except:
+        pass
 
 # ==============================================================================
 # 2. CONFIGURAÇÕES E CONSTANTES
@@ -78,33 +97,31 @@ DB_CONFIG = {
     'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server')
 }
 
-# Definição das procedures e ordem de execução
-PROCEDURES = [
+# Definição dos ETLs e ordem de execução
+ETL_DEFINITIONS = [
     {
-        'name': 'prc_process_indicators_to_silver',
-        'schema': 'bronze',
-        'description': 'Processa indicadores de Bronze para Silver',
-        'parameters': {
-            '@debug_mode': 1
-        }
+        'id': '001',
+        'name': 'Performance Indicators',
+        'script': 'etl_001_indicators.py',
+        'config': 'config/etl_001_config.json',
+        'critical': True,  # Se falhar, para a execução
+        'dependencies': []
     },
     {
-        'name': 'prc_bronze_to_silver_assignments',
-        'schema': 'bronze',
-        'description': 'Processa atribuições de Bronze para Silver',
-        'parameters': {
-            '@validate_weights': 1,
-            '@debug': 0
-        }
+        'id': '002',
+        'name': 'Performance Assignments',
+        'script': 'etl_002_assignments.py',
+        'config': 'config/etl_002_config.json',
+        'critical': True,
+        'dependencies': ['001']  # Depende do ETL-001
     },
     {
-        'name': 'prc_bronze_to_silver_performance_targets',
-        'schema': 'bronze',
-        'description': 'Processa metas de Bronze para Silver',
-        'parameters': {
-            '@validate_completeness': 1,
-            '@debug_mode': 1
-        }
+        'id': '003',
+        'name': 'Performance Targets',
+        'script': 'etl_003_targets.py',
+        'config': 'config/etl_003_config.json',
+        'critical': True,
+        'dependencies': ['001']  # Depende do ETL-001
     }
 ]
 
@@ -124,7 +141,7 @@ def setup_logging(log_file: Optional[str] = None) -> logging.Logger:
     
     # Handler para arquivo
     if log_file:
-        file_handler = logging.FileHandler(LOG_DIR / log_file)
+        file_handler = logging.FileHandler(LOG_DIR / log_file, encoding='utf-8')
         file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
         logger.addHandler(file_handler)
     
@@ -146,141 +163,225 @@ def get_db_connection():
         f"TrustServerCertificate=yes"
     )
     conn = pyodbc.connect(conn_str, timeout=30)
-    conn.autocommit = True  # Deixar cada procedure gerenciar suas próprias transações
+    conn.autocommit = True
     return conn
 
-def run_etls(logger: logging.Logger, debug: bool = False) -> int:
-    """
-    Executa os ETLs usando o orquestrador.
+def get_python_command():
+    """Detecta o comando Python correto para qualquer sistema operacional."""
+    # Primeiro, usar o mesmo Python que está executando este script
+    if sys.executable:
+        return sys.executable
     
-    Args:
-        logger: Logger configurado
-        debug: Se True, modo debug
-        
-    Returns:
-        Código de retorno (0 = sucesso)
-    """
-    logger.info("\n" + "="*60)
-    logger.info("FASE 1: EXECUTANDO ETLs")
-    logger.info("="*60)
+    # Lista de comandos Python para tentar em ordem
+    python_commands = []
     
-    # Usar Python 3.11
-    python_cmd = '/opt/homebrew/bin/python3.11' if os.path.exists('/opt/homebrew/bin/python3.11') else 'python3.11'
-    cmd = [python_cmd, 'run_all_etls.py']
-    if debug:
-        cmd.append('--debug')
-        
-    try:
-        process = subprocess.run(
-            cmd,
-            cwd=BASE_DIR,
-            capture_output=True,
-            text=True
-        )
-        
-        if process.returncode == 0:
-            logger.info("ETLs executados com sucesso")
-            return 0
-        else:
-            logger.error(f"ETLs falharam: {process.stderr}")
-            return process.returncode
-            
-    except Exception as e:
-        logger.error(f"Erro ao executar ETLs: {e}")
-        return 1
+    if sys.platform == 'win32':
+        # Windows
+        python_commands = ['python.exe', 'python', 'py.exe', 'py']
+    else:
+        # Unix/Linux/Mac
+        python_commands = ['python3', 'python', '/usr/bin/python3', '/usr/local/bin/python3']
+    
+    # Tentar cada comando
+    for cmd in python_commands:
+        try:
+            result = subprocess.run([cmd, '--version'], 
+                                    capture_output=True, 
+                                    text=True, 
+                                    timeout=5)
+            if result.returncode == 0:
+                return cmd
+        except (subprocess.SubprocessError, FileNotFoundError):
+            continue
+    
+    # Se nenhum funcionou, usar 'python' como fallback
+    return 'python'
 
-def execute_procedure(conn: pyodbc.Connection, proc_def: Dict, 
-                     logger: logging.Logger, debug: bool = False) -> bool:
+def should_run_etl(etl_id: str, only_etls: Optional[List[str]] = None) -> bool:
     """
-    Executa uma stored procedure.
+    Verifica se um ETL deve ser executado.
     
     Args:
-        conn: Conexão com banco
-        proc_def: Definição da procedure
-        logger: Logger configurado
-        debug: Se True, modo debug
+        etl_id: ID do ETL
+        only_etls: Lista de ETLs específicos para executar
         
     Returns:
-        True se sucesso, False caso contrário
+        True se deve executar, False caso contrário
     """
-    try:
-        cursor = conn.cursor()
-        
-        # Construir comando EXEC
-        proc_name = f"[{proc_def['schema']}].[{proc_def['name']}]"
-        params = []
-        
-        for param, value in proc_def.get('parameters', {}).items():
-            if param == '@debug':
-                value = 1 if debug else 0
-            params.append(f"{param} = {value}")
-            
-        exec_cmd = f"EXEC {proc_name}"
-        if params:
-            exec_cmd += " " + ", ".join(params)
-            
-        logger.info(f"Executando: {exec_cmd}")
-        
-        # Executar procedure
-        cursor.execute(exec_cmd)
-        
-        # Capturar mensagens e resultsets
-        while cursor.nextset():
-            pass
-            
-        # Não fazer commit aqui - deixar a procedure gerenciar sua própria transação
-        logger.info(f"Procedure {proc_def['name']} executada com sucesso")
+    if only_etls is None:
         return True
-        
-    except Exception as e:
-        logger.error(f"Erro ao executar procedure {proc_def['name']}: {e}")
-        # Com autocommit=True, não precisamos fazer rollback manual
-        return False
+    return etl_id in only_etls
 
-def run_procedures(logger: logging.Logger, debug: bool = False) -> int:
+def check_dependencies(etl: Dict, results: Dict) -> bool:
     """
-    Executa as procedures de Bronze para Silver.
+    Verifica se as dependências de um ETL foram satisfeitas.
+    
+    Args:
+        etl: Definição do ETL
+        results: Resultados das execuções anteriores
+        
+    Returns:
+        True se todas as dependências foram satisfeitas
+    """
+    for dep_id in etl['dependencies']:
+        if dep_id not in results:
+            return False
+        if results[dep_id]['status'] != 'SUCCESS':
+            return False
+    return True
+
+def execute_etl(etl: Dict, logger: logging.Logger, debug: bool = False, dry_run: bool = False) -> Dict:
+    """
+    Executa um ETL individual.
+    
+    Args:
+        etl: Definição do ETL
+        logger: Logger configurado
+        debug: Se True, modo debug
+        dry_run: Se True, simula execução
+        
+    Returns:
+        Dicionário com resultado da execução
+    """
+    etl_start = datetime.now()
+    result = {
+        'etl_id': etl['id'],
+        'etl_name': etl['name'],
+        'start_time': etl_start,
+        'status': 'PENDING',
+        'message': '',
+        'duration': 0
+    }
+    
+    try:
+        # Detectar comando Python
+        python_cmd = get_python_command()
+        cmd = [python_cmd, etl['script']]
+        
+        if debug:
+            cmd.append('--debug')
+        
+        if dry_run:
+            cmd.append('--dry-run')
+            
+        # Adicionar config se especificada
+        if etl.get('config'):
+            cmd.extend(['--config', etl['config']])
+        
+        logger.info(f"Executando: {' '.join(cmd)}")
+        
+        if dry_run:
+            logger.info(f"[DRY RUN] Simulando execução de {etl['name']}")
+            result['status'] = 'SUCCESS'
+            result['message'] = 'Dry run - não executado'
+        else:
+            # Executar comando
+            process = subprocess.run(
+                cmd,
+                cwd=BASE_DIR,
+                capture_output=True,
+                text=True
+            )
+            
+            if process.returncode == 0:
+                result['status'] = 'SUCCESS'
+                result['message'] = 'ETL executado com sucesso'
+                logger.info(f"ETL {etl['id']} concluído com sucesso")
+            else:
+                result['status'] = 'ERROR'
+                result['message'] = f"Erro: {process.stderr}"
+                logger.error(f"ETL {etl['id']} falhou: {process.stderr}")
+                
+            # Log output detalhado em modo debug
+            if debug and process.stdout:
+                logger.debug(f"Output do ETL {etl['id']}:\n{process.stdout}")
+                    
+    except Exception as e:
+        result['status'] = 'ERROR'
+        result['message'] = str(e)
+        logger.error(f"Erro ao executar ETL {etl['id']}: {e}")
+        
+    finally:
+        result['end_time'] = datetime.now()
+        result['duration'] = (result['end_time'] - etl_start).total_seconds()
+        
+    return result
+
+def run_etls(logger: logging.Logger, debug: bool = False, dry_run: bool = False, 
+             only_etls: Optional[List[str]] = None, continue_on_error: bool = False) -> int:
+    """
+    Executa os ETLs com gerenciamento de dependências.
     
     Args:
         logger: Logger configurado
         debug: Se True, modo debug
+        dry_run: Se True, simula execução
+        only_etls: Lista de ETLs específicos para executar
+        continue_on_error: Se True, continua mesmo com erros
         
     Returns:
         Código de retorno (0 = sucesso)
     """
     logger.info("\n" + "="*60)
-    logger.info("FASE 2: EXECUTANDO PROCEDURES")
+    logger.info("EXECUTANDO ETLs")
     logger.info("="*60)
     
-    try:
-        conn = get_db_connection()
-        logger.info("Conexão com banco estabelecida")
-        
-        success_count = 0
-        
-        for proc_def in PROCEDURES:
-            logger.info(f"\n{proc_def['description']}...")
+    if only_etls:
+        logger.info(f"ETLs selecionados: {', '.join(only_etls)}")
+    
+    results = {}
+    total_etls = len([e for e in ETL_DEFINITIONS if should_run_etl(e['id'], only_etls)])
+    executed = 0
+    failed = 0
+    
+    for etl in ETL_DEFINITIONS:
+        if not should_run_etl(etl['id'], only_etls):
+            logger.info(f"Pulando ETL {etl['id']} - {etl['name']} (não selecionado)")
+            continue
             
-            if execute_procedure(conn, proc_def, logger, debug):
-                success_count += 1
-            else:
-                logger.error(f"Falha na procedure {proc_def['name']}")
-                if success_count == 0:  # Se primeira procedure falhou, parar
-                    logger.error("Procedure crítica falhou - parando execução")
-                    break
-                    
-        conn.close()
+        logger.info(f"\n{'='*50}")
+        logger.info(f"ETL {etl['id']} - {etl['name']}")
+        logger.info(f"{'='*50}")
         
-        if success_count == len(PROCEDURES):
-            logger.info(f"\nTodas as {success_count} procedures executadas com sucesso")
-            return 0
-        else:
-            logger.error(f"\n{len(PROCEDURES) - success_count} procedures falharam")
-            return 1
-            
-    except Exception as e:
-        logger.error(f"Erro ao executar procedures: {e}")
-        return 1
+        # Verificar dependências
+        if not check_dependencies(etl, results):
+            logger.error(f"Dependências não satisfeitas para ETL {etl['id']}")
+            results[etl['id']] = {
+                'status': 'SKIPPED',
+                'message': 'Dependências não satisfeitas'
+            }
+            if etl['critical'] and not continue_on_error:
+                logger.error("ETL crítico falhou - parando execução")
+                break
+            continue
+        
+        # Executar ETL
+        result = execute_etl(etl, logger, debug, dry_run)
+        results[etl['id']] = result
+        executed += 1
+        
+        if result['status'] == 'ERROR':
+            failed += 1
+            if etl['critical'] and not continue_on_error:
+                logger.error("ETL crítico falhou - parando execução")
+                break
+                
+        logger.info(f"Duração: {result['duration']:.2f} segundos")
+    
+    # Resumo dos ETLs
+    logger.info("\n" + "="*50)
+    logger.info("RESUMO DOS ETLs")
+    logger.info("="*50)
+    logger.info(f"Total: {total_etls} | Executados: {executed} | Sucesso: {executed - failed} | Falhas: {failed}")
+    
+    # Detalhes por ETL
+    for etl_id, result in results.items():
+        status_symbol = "✓" if result['status'] == 'SUCCESS' else "✗"
+        logger.info(f"  {status_symbol} ETL-{etl_id}: {result['status']} ({result.get('duration', 0):.2f}s)")
+        if result['status'] == 'ERROR':
+            logger.debug(f"    Erro: {result['message'][:100]}...")
+    
+    return 0 if failed == 0 else 1
 
 def check_prerequisites(logger: logging.Logger) -> bool:
     """
@@ -308,24 +409,22 @@ def check_prerequisites(logger: logging.Logger) -> bool:
     try:
         conn = get_db_connection()
         conn.close()
-        logger.info("✓ Conexão com banco de dados OK")
+        logger.info("[OK] Conexão com banco de dados OK")
     except Exception as e:
-        logger.error(f"✗ Erro ao conectar ao banco: {e}")
+        logger.error(f"[ERRO] Erro ao conectar ao banco: {e}")
         return False
         
     # Verificar arquivos necessários
-    required_files = [
-        'run_all_etls.py',
-        'etl_001_indicators.py',
-        'etl_002_assignments.py'
-    ]
+    required_files = []
+    for etl in ETL_DEFINITIONS:
+        required_files.append(etl['script'])
     
     for file in required_files:
         if not (BASE_DIR / file).exists():
-            logger.error(f"✗ Arquivo necessário não encontrado: {file}")
+            logger.error(f"[ERRO] Arquivo necessário não encontrado: {file}")
             return False
             
-    logger.info("✓ Todos os pré-requisitos atendidos")
+    logger.info("[OK] Todos os pré-requisitos atendidos")
     return True
 
 # ==============================================================================
@@ -336,7 +435,7 @@ def main():
     """Função principal do pipeline."""
     # Parse argumentos
     parser = argparse.ArgumentParser(
-        description='Pipeline Completo - ETLs + Procedures',
+        description='Pipeline ETL - Google Sheets para Bronze',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__
     )
@@ -348,15 +447,22 @@ def main():
     )
     
     parser.add_argument(
-        '--only-etls',
+        '--dry-run',
         action='store_true',
-        help='Executar apenas ETLs (sem procedures)'
+        help='Simula execução sem carregar dados'
     )
     
     parser.add_argument(
-        '--only-procedures',
+        '--only-etl',
+        nargs='+',
+        metavar='ID',
+        help='Executar apenas ETLs específicos (ex: --only-etl 001 002)'
+    )
+    
+    parser.add_argument(
+        '--continue-on-error',
         action='store_true',
-        help='Executar apenas procedures (sem ETLs)'
+        help='Continuar execução mesmo se ETL crítico falhar'
     )
     
     parser.add_argument(
@@ -378,8 +484,9 @@ def main():
         start_time = datetime.now()
         
         logger.info("="*80)
-        logger.info("PIPELINE COMPLETO - PERFORMANCE INDICATORS & ASSIGNMENTS")
+        logger.info("PIPELINE ETL - GOOGLE SHEETS PARA BRONZE")
         logger.info(f"Início: {start_time}")
+        logger.info(f"Modo: {'DRY RUN' if args.dry_run else 'PRODUÇÃO'}")
         logger.info("="*80)
         
         # Verificar pré-requisitos
@@ -388,29 +495,14 @@ def main():
                 logger.error("Pré-requisitos não atendidos - abortando")
                 sys.exit(1)
                 
-        exit_code = 0
-        
-        # Fase 1: ETLs
-        if not args.only_procedures:
-            etl_result = run_etls(logger, args.debug)
-            if etl_result != 0:
-                logger.error("ETLs falharam - abortando pipeline")
-                exit_code = etl_result
-            else:
-                logger.info("ETLs concluídos com sucesso")
-        else:
-            logger.info("Pulando ETLs (--only-procedures)")
-            
-        # Fase 2: Procedures
-        if exit_code == 0 and not args.only_etls:
-            proc_result = run_procedures(logger, args.debug)
-            if proc_result != 0:
-                logger.error("Procedures falharam")
-                exit_code = proc_result
-            else:
-                logger.info("Procedures concluídas com sucesso")
-        elif args.only_etls:
-            logger.info("Pulando procedures (--only-etls)")
+        # Executar ETLs
+        exit_code = run_etls(
+            logger=logger,
+            debug=args.debug,
+            dry_run=args.dry_run,
+            only_etls=args.only_etl,
+            continue_on_error=args.continue_on_error
+        )
             
         # Resumo final
         end_time = datetime.now()
