@@ -51,7 +51,7 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 
 | Stakeholder | Papel | Interesse |
 |-------------|-------|-----------|
-| Diretoria Comercial | Sponsor/Aprovador | Visão estratégica de performance |
+| CEO | Sponsor/Aprovador | Visão estratégica de performance |
 | Gestão de Performance | Owner do Sistema | Configuração e manutenção de indicadores (indicadores e metas) |
 | Pessoas da equipe de Investimentos | Usuários Finais | Acompanhamento de metas individuais |
 | Controladoria | Consumidor | Dados para bonificação |
@@ -74,7 +74,6 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 | Acompanhamento de Metas | Definir e monitorar metas mensais | Alta |
 | Cálculo de Performance | Processar resultados e calcular atingimento | Alta |
 | Rankings e Comparações | Gerar rankings e análises comparativas | Média |
-| Integração ML/BI | Disponibilizar dados para consumo | Alta |
 
 ## 3. Visão Arquitetural
 
@@ -108,12 +107,11 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 │  (Google Sheets)    │     │      System          │     │   (Dashboards)      │
 └─────────────────────┘     └──────────┬───────────┘     └─────────────────────┘
                                        │                            │
-                            ┌──────────┴──────────┐                 │
-                            │                     │                 │
-                    ┌───────▼────────┐   ┌────────▼───────┐         │
-                    │ Controladoria  │   │  ML Platform   │         │
-                    │ (Remuneração)  │   │  (Previsões)   │◀────────┘
-                    └────────────────┘   └────────────────┘
+                                       │                            │
+                               ┌───────▼────────┐                   |
+                               │ Controladoria  │                   │
+                               │ (Remuneração)  │◀──────────────────┘
+                               └────────────────┘
 ```
 
 ### 4.2 Componentes Principais
@@ -125,8 +123,8 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 | Bronze Layer | Staging de dados brutos | SQL Server | Tables |
 | Silver Procedures | Transformação e validação | T-SQL | Stored Procedures |
 | Silver Layer | Dados limpos e validados | SQL Server | Tables + Views |
-| Gold Layer | Modelo EAV para consumo | SQL Server | Views |
-| Platinum Layer | Features ML e cache | SQL Server | Tables |
+| Gold Procedures | Transformação e validação | T-SQL | Stored Procedures |
+| Gold Layer | Modelo EAV para consumo | SQL Server | Tables + Views |
 
 ### 4.3 Diagrama de Componentes (C4 - Nível 2)
 
@@ -158,15 +156,15 @@ O Sistema de Performance Tracking é uma solução de gestão de indicadores (KP
 │  │  performance_indicators | performance_assignments | targets │  │
 │  └─────────────────────────────┬───────────────────────────────┘  │
 │                                │                                  │
+│           ┌────────────────────┴────────────────────┐             │
+│           │        SQL Server Procedures            │             │
+│           │  prc_silver_to_bronze_card_metas        │             │
+│           └────────────────────┬────────────────────┘             │
+│                                │                                  │
 │  ┌─────────────────────────────▼───────────────────────────────┐  │
 │  │                       GOLD LAYER                            │  │
 │  │              card_metas (EAV Model)                         │  │
 │  │    vw_card_metas_pivot | vw_weighted_score | vw_rankings    │  │
-│  └─────────────────────────────┬───────────────────────────────┘  │
-│                                │                                  │
-│  ┌─────────────────────────────▼───────────────────────────────┐  │
-│  │                    PLATINUM LAYER                           │  │
-│  │          ml_features | api_cache | forecasts                │  │
 │  └─────────────────────────────────────────────────────────────┘  │
 │                                                                   │
 └───────────────────────────────────────────────────────────────────┘
@@ -223,13 +221,12 @@ gold.card_metas (Entity-Attribute-Value)
 ├─ meta_id (PK)
 ├─ period_start
 ├─ period_end
-├─ entity_type ('ASSESSOR')
 ├─ entity_id (codigo_assessor_crm)
-├─ attribute_type ('INDICATOR')
+├─ entity_name (nome_pessoa)
 ├─ attribute_code (indicator_code)
 ├─ attribute_name (indicator_name)
-├─ indicator_type (CARD, GATILHO, KPI)
-├─ indicator_category
+├─ indicator_type (indicator_type)
+├─ indicator_category (indicator_category)
 ├─ target_value
 ├─ stretch_value
 ├─ minimum_value
@@ -254,11 +251,8 @@ gold.card_metas (Entity-Attribute-Value)
    
 3. vw_card_metas_ranking
    └─> Rankings por indicador e geral
-   
-4. vw_card_metas_monthly_comparison
-   └─> Comparação MoM, YoY
-   
-5. vw_card_metas_dashboard
+      
+4. vw_card_metas_dashboard
    └─> Visão executiva para Power BI
 ```
 
