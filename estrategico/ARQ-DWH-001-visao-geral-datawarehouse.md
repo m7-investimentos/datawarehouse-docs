@@ -208,13 +208,15 @@ GOLD LAYER (Refined Zone)
 ├── dim_product           (Dimensão Produto)
 ├── dim_date              (Dimensão Tempo)
 ├── fact_transactions     (Fato Transações)
-└── fact_positions        (Fato Posições)
+├── fact_positions        (Fato Posições)
+├── performance_metrics   (Métricas de performance e KPIs)
+└── llm_ready_data        (Dados otimizados para LLMs)
 
 PLATINUM LAYER (Curated Zone)
 ├── agg_customer_360      (Visão 360 do cliente)
 ├── ml_customer_features  (Features para ML)
 ├── kpi_dashboard_cache   (KPIs pré-calculados)
-└── llm_semantic_layer    (Camada semântica para LLMs)
+└── executive_dashboards  (Dashboards executivos)
 
 DOCS SCHEMA (Documentation)
 ├── table_documentation   (Documentação de tabelas)
@@ -237,8 +239,8 @@ METADADOS SCHEMA (Metadata)
 | ERP | Transações | Incremental → Validate → Fact | Bronze→Silver→Gold | Horário |
 | Trading | Operações | Streaming → Aggregate | Bronze→Silver→Gold→Platinum | Real-time |
 | Custódia | Posições | Delta Load → Reconcile | Bronze→Silver→Gold | Diário 6AM |
-| PowerBI | Queries | Direct Query + Import | Gold/Platinum | On-demand |
-| ML Pipeline | Features | Batch Transform | Platinum | Diário 4AM |
+| PowerBI | Queries | Direct Query + Import | Gold (performance_metrics) / Platinum | On-demand |
+| ML Pipeline | Features | Batch Transform | Gold (llm_ready_data) → Platinum | Diário 4AM |
 | All Layers | Metadata | Auto-capture | Metadados Schema | Real-time |
 
 ### 5.3 Governança de Dados
@@ -563,6 +565,7 @@ METADADOS SCHEMA (Metadata)
 | 2.0.0 | 2025-01-13 | Arquiteto Dados | Revisão completa: SQL Server, camada Platinum, detalhamento completo |
 | 2.1.0 | 2025-01-13 | Arquiteto Dados | Ajustes: dependências corretas, stakeholders atualizados, drivers baseados em OKRs, schemas docs e metadados |
 | 2.2.0 | 2025-06-13 | Bruno Chiaramonti | Alinhamento organizacional: responsável atualizado, esclarecimento que Dados/ML/IA é subárea de Performance e Desempenho |
+| 2.3.0 | 2025-06-23 | Bruno Chiaramonti | Correção: removidas referências a gold_performance e gold_llm, substituídas pela arquitetura padrão bronze→silver→gold→platinum |
 
 ---
 
