@@ -100,7 +100,7 @@ Pré-requisitos:
 -- 5. CONFIGURAÇÕES E OTIMIZAÇÕES
 -- ==============================================================================
 -- Configurações da sessão para otimização
-SET NOCOUNT ON;
+-- SET NOCOUNT ON;
 -- SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
 
 -- ==============================================================================
@@ -108,7 +108,8 @@ SET NOCOUNT ON;
 -- ==============================================================================
 USE M7Medallion;
 GO
-CREATE OR ALTER PROCEDURE silver.prc_bronze_to_silver_performance_assignments
+
+CREATE OR ALTER PROCEDURE [silver].[prc_bronze_to_silver_performance_assignments]
     @ExecutionId VARCHAR(50) = NULL,
     @ProcessOnlyNew BIT = 1,
     @Debug BIT = 0
@@ -153,7 +154,7 @@ BEGIN
         UPDATE silver.fact_performance_assignments
         SET 
             is_current = 0,
-            valid_to = DATEADD(DAY, -1, CAST(bronze.valid_from AS DATE))
+            valid_to = DATEADD(DAY, -1, GETDATE())
         FROM bronze.performance_assignments bronze
         INNER JOIN silver.dim_indicators di ON bronze.indicator_code = di.indicator_id
         WHERE (bronze.is_processed = 0 OR @ProcessOnlyNew = 0)
@@ -167,8 +168,61 @@ BEGIN
             PRINT CONCAT('[INFO] Registros invalidados: ', CAST(@RecordsUpdated AS VARCHAR(10)));
         
         -- ==============================================================================
-        -- TRANSFORMAÇÃO E INSERÇÃO DE NOVOS REGISTROS
+        -- TRANSFORMAÇÃO E INSERÇÃO DE NOVOS REGISTROS - CORRIGIDO PARA MÚLTIPLOS TRIMESTRES
         -- ==============================================================================
+        
+        -- CTE para explodir trimestres do período
+        WITH trimestres_periodo AS (
+            SELECT 
+                bronze.*,
+                t.trimestre_num,
+                CONCAT(YEAR(CAST(bronze.valid_from AS DATE)), '-Q', t.trimestre_num) as trimestre_gerado,
+                
+                -- Calcular início e fim corretos por trimestre
+                CASE t.trimestre_num
+                    WHEN 1 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 1, 1)
+                    WHEN 2 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 4, 1)
+                    WHEN 3 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 7, 1)
+                    WHEN 4 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 10, 1)
+                END as trimestre_inicio,
+                
+                CASE t.trimestre_num
+                    WHEN 1 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 3, 31)
+                    WHEN 2 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 6, 30)
+                    WHEN 3 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 9, 30)
+                    WHEN 4 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 12, 31)
+                END as trimestre_fim
+                
+            FROM bronze.performance_assignments bronze
+            CROSS JOIN (VALUES (1), (2), (3), (4)) t(trimestre_num)
+            WHERE 
+                -- Filtros de qualidade de dados
+                bronze.indicator_exists = 1
+                AND bronze.weight_sum_valid = 1
+                AND bronze.validation_errors IS NULL
+                AND (bronze.is_processed = 0 OR @ProcessOnlyNew = 0)
+                
+                -- Só incluir trimestres que intersectam com o período valid_from/valid_to
+                AND (
+                    -- Fim do trimestre >= início do período
+                    CASE t.trimestre_num
+                        WHEN 1 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 3, 31)
+                        WHEN 2 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 6, 30) 
+                        WHEN 3 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 9, 30)
+                        WHEN 4 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 12, 31)
+                    END >= CAST(bronze.valid_from AS DATE)
+                    
+                    AND
+                    
+                    -- Início do trimestre <= fim do período
+                    CASE t.trimestre_num
+                        WHEN 1 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 1, 1)
+                        WHEN 2 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 4, 1)
+                        WHEN 3 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 7, 1) 
+                        WHEN 4 THEN DATEFROMPARTS(YEAR(CAST(bronze.valid_from AS DATE)), 10, 1)
+                    END <= CAST(bronze.valid_to AS DATE)
+                )
+        )
         
         INSERT INTO silver.fact_performance_assignments (
             indicator_sk,
@@ -187,61 +241,46 @@ BEGIN
         SELECT 
             -- Resolução de chaves estrangeiras
             di.indicator_sk,
-            bronze.codigo_assessor_crm AS crm_id,
-            cal.data_ref,
-            COALESCE(ep.id_estrutura, 1) AS id_estrutura, -- Default estrutura se não encontrar
+            tp.codigo_assessor_crm AS crm_id,
+            tp.trimestre_inicio AS data_ref,  -- Usar início do trimestre como data_ref
+            COALESCE(ep.id_estrutura, 1) AS id_estrutura,
             
             -- Transformações de atributos
-            CAST(COALESCE(NULLIF(bronze.weight, ''), '0') AS DECIMAL(5,2)) AS peso,
-            CONCAT(CAST(YEAR(CAST(bronze.valid_from AS DATE)) AS VARCHAR(4)), '-', cal.trimestre) AS trimestre,
-            YEAR(CAST(bronze.valid_from AS DATE)) AS ano,
-            CAST(bronze.valid_from AS DATE) AS valid_from,
-            CASE 
-                WHEN bronze.valid_to = '9999-12-31' OR bronze.valid_to IS NULL 
-                THEN CAST('9999-12-31' AS DATE)
-                ELSE CAST(bronze.valid_to AS DATE)
-            END AS valid_to,
+            CAST(COALESCE(NULLIF(tp.weight, ''), '0') AS DECIMAL(5,2)) AS peso,
+            tp.trimestre_gerado AS trimestre,
+            YEAR(tp.trimestre_inicio) AS ano,
+            tp.trimestre_inicio AS valid_from,  -- Início do trimestre
+            tp.trimestre_fim AS valid_to,      -- Fim do trimestre
             1 AS is_current,
             
             -- Campos de auditoria
             @StartTime AS created_date,
             CONCAT(@ProcessName, '-', @ExecutionId) AS created_by
             
-        FROM bronze.performance_assignments bronze
+        FROM trimestres_periodo tp
         
         -- Joins para resolução de surrogate keys
         INNER JOIN silver.dim_indicators di 
-            ON bronze.indicator_code = di.indicator_id
+            ON tp.indicator_code = di.indicator_id
             AND di.is_active = 1
-        
-        -- Join com calendário para obter data_ref e trimestre
-        INNER JOIN silver.dim_calendario cal 
-            ON cal.data_ref = CAST(bronze.valid_from AS DATE)
         
         -- Validação se pessoa existe
         INNER JOIN silver.dim_pessoas dp 
-            ON bronze.codigo_assessor_crm = dp.crm_id
+            ON tp.codigo_assessor_crm = dp.crm_id
         
-        -- Buscar estrutura organizacional vigente na data
+        -- Buscar estrutura organizacional vigente na data do trimestre
         LEFT JOIN silver.fact_estrutura_pessoas ep 
-            ON bronze.codigo_assessor_crm = ep.crm_id
-            AND CAST(bronze.valid_from AS DATE) >= ep.data_entrada
-            AND (ep.data_saida IS NULL OR CAST(bronze.valid_from AS DATE) <= ep.data_saida)
-        
-        WHERE 
-            -- Filtros de qualidade de dados
-            bronze.indicator_exists = 1  -- Só indicadores que existem
-            AND bronze.weight_sum_valid = 1  -- Só pessoas com soma de peso válida
-            AND bronze.validation_errors IS NULL  -- Sem erros de validação
-            AND (bronze.is_processed = 0 OR @ProcessOnlyNew = 0)  -- Controle de processamento
+            ON tp.codigo_assessor_crm = ep.crm_id
+            AND tp.trimestre_inicio >= ep.data_entrada
+            AND (ep.data_saida IS NULL OR tp.trimestre_inicio <= ep.data_saida)
             
         -- Evitar duplicatas na mesma execução
-        AND NOT EXISTS (
+        WHERE NOT EXISTS (
             SELECT 1 
             FROM silver.fact_performance_assignments existing
-            WHERE existing.crm_id = bronze.codigo_assessor_crm
+            WHERE existing.crm_id = tp.codigo_assessor_crm
               AND existing.indicator_sk = di.indicator_sk
-              AND existing.trimestre = CONCAT(CAST(YEAR(CAST(bronze.valid_from AS DATE)) AS VARCHAR(4)), '-', cal.trimestre)
+              AND existing.trimestre = tp.trimestre_gerado
               AND existing.is_current = 1
         );
         
@@ -310,6 +349,21 @@ BEGIN
         PRINT CONCAT('Registros atualizados (silver): ', CAST(@RecordsUpdated AS VARCHAR(10)));
         PRINT CONCAT('Registros inseridos (silver): ', CAST(@RecordsInserted AS VARCHAR(10)));
         PRINT CONCAT('Finalizado em: ', FORMAT(GETDATE(), 'yyyy-MM-dd HH:mm:ss'));
+        
+        -- Log adicional: quantos trimestres foram criados
+        IF @Debug = 1
+        BEGIN
+            SELECT 
+                'TRIMESTRES CRIADOS POR PESSOA:' AS Info,
+                crm_id,
+                COUNT(DISTINCT trimestre) as qtd_trimestres,
+                STRING_AGG(trimestre, ', ') as trimestres
+            FROM silver.fact_performance_assignments 
+            WHERE created_by LIKE '%' + @ExecutionId + '%'
+              AND is_current = 1
+            GROUP BY crm_id
+            ORDER BY crm_id;
+        END
         
     END TRY
     BEGIN CATCH
