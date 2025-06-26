@@ -647,7 +647,14 @@ class PerformanceTargetsETL:
                 load_data['is_processed'] = 0
                 load_data['processing_date'] = None
                 load_data['processing_status'] = None
-                load_data['processing_notes'] = None
+                
+                # MODIFICAÇÃO: Mapear 'notes' para 'processing_notes'
+                # Se a coluna 'notes' existir no DataFrame, use ela; senão, use None
+                if 'notes' in load_data.columns:
+                    load_data['processing_notes'] = load_data['notes'].fillna('').astype(str)
+                else:
+                    load_data['processing_notes'] = None
+                    self.logger.warning("Coluna 'notes' não encontrada no Google Sheets")
                 
                 # Adicionar erros de validação como JSON
                 if self.validation_errors:

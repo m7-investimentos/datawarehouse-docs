@@ -406,6 +406,42 @@ class IndicatorsETL:
                     '1' if str(x).upper() in ['TRUE', '1', 'SIM', 'YES'] else '0'
                 )
         
+        # Adicionar indicator_type baseado na coluna notes
+        def determine_indicator_type(notes):
+            """
+            Determina o tipo do indicador baseado no conteúdo de notes.
+            
+            Args:
+                notes: Valor da coluna notes
+                
+            Returns:
+                str: Tipo do indicador (GATILHO, CARD, KPI, PPI ou None)
+            """
+            if pd.isna(notes):
+                return None
+                
+            notes_upper = str(notes).upper()
+            
+            # Ordem de prioridade (caso haja múltiplas palavras-chave)
+            if 'GATILHO' in notes_upper:
+                return 'GATILHO'
+            elif 'CARD' in notes_upper:
+                return 'CARD'
+            elif 'KPI' in notes_upper:
+                return 'KPI'
+            elif 'PPI' in notes_upper:
+                return 'PPI'
+            else:
+                return None  # Ou você pode definir um valor padrão como 'CARD'
+        
+        # Aplicar a função para criar a coluna indicator_type
+        if 'notes' in df.columns:
+            df['indicator_type'] = df['notes'].apply(determine_indicator_type)
+            self.logger.info(f"Coluna indicator_type criada. Distribuição: {df['indicator_type'].value_counts().to_dict()}")
+        else:
+            self.logger.warning("Coluna 'notes' não encontrada. indicator_type será NULL")
+            df['indicator_type'] = None
+        
         # Adicionar número da linha original na planilha
         df['row_number'] = range(2, len(df) + 2)  # Começa em 2 (pula header)
         
@@ -470,7 +506,7 @@ class IndicatorsETL:
                 # Converter tudo para string para Bronze (exceto campos de controle)
                 string_columns = ['indicator_code', 'indicator_name', 'category', 'unit',
                                 'aggregation', 'formula', 'is_inverted', 'is_active',
-                                'description', 'notes']
+                                'description', 'notes', 'indicator_type']
                 
                 for col in string_columns:
                     if col in load_data.columns:
